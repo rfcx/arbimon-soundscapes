@@ -1,0 +1,22 @@
+aggregation: hour # day-of-week day-of-month month day-of-year year
+normalize: false # true 
+bandwidth-hz: 86 # 21 43 86 172 344
+peak-filter:
+  amplitude: 0
+  amplitude-filter: absolute # relative-to-maximum
+  frequency: 0
+
+source:
+  project: zy5jbxx4cs9f
+  sites:
+    - 'PR-CNN'
+    # - GU*
+  date_start: '2021-03-23'
+  date_end: '2021-03-23'
+  hours: '0-21'
+  # or
+  # path: /audio
+
+output:
+  mode: 'api' # or csv or stdout
+  # local_path: '/' # for csv mode
