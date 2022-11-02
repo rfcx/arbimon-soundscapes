@@ -1,9 +1,13 @@
 FROM python:3.8-buster AS soundscapes
 
-## Install OS and Python dependencies
-ADD requirements.txt /requirements.txt
+# Install R, sox
 RUN apt update && \
-    pip3 install --no-cache-dir --upgrade pip && \
+    apt install -y r-base sox && \
+    Rscript -e 'install.packages("seewave")'
+
+## Install Python dependencies
+ADD requirements.txt /requirements.txt
+RUN pip3 install --no-cache-dir --upgrade pip && \
     pip3 install --no-cache-dir -r /requirements.txt
 
 ARG RFCX_SDK_VERSION=0.2.1

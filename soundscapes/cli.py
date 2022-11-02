@@ -1,15 +1,15 @@
 import argparse
 from .config.logs import get_logger
 from .config.read_config import read_config
+from .old.folder_to_soundscape import folder_to_soundscape
 
 log = get_logger()
 
 def main(batch_config):
     log.info("PROCESS: Start")
 
-    # Setup
-
     # Run job
+    folder_to_soundscape('/source', '/output')
 
     log.info("PROCESS: End")
 

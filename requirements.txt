@@ -1,1 +1,4 @@
 PyYAML==6.0
+joblib==1.2.0
+matplotlib==1.5.3
+pypng==0.0.18
