@@ -1,9 +1,7 @@
 import os
 import subprocess
 import json
-import re
 import time
-from datetime import datetime
 
 (compute_index_h, compute_index_aci) = (False, True)
 
@@ -12,13 +10,6 @@ currDir = (os.path.dirname(os.path.realpath(__file__)))
 
 def process_rec(rec, bin_size, frequency, threshold):
     print(f'processing {rec}')
-
-    # Parse filename for timestamp
-    rec_timestamp_match = re.search(r'(\d{4}-\d{2}-\d{2}_\d{2}-\d{2})\.\w+', rec)
-    if not rec_timestamp_match:
-        print('Timestamp not found in filename')
-        return None
-    timestamp = datetime.strptime(rec_timestamp_match.group(1), '%Y-%m-%d_%H-%M')
 
     # Convert file to wav if needed
     if rec.endswith('.flac'):
@@ -93,4 +84,4 @@ def process_rec(rec, bin_size, frequency, threshold):
     recMaxHertz = float(recSampleRate) / 2.0
     print(f'timing: rec get sr: {time.time() - start_time:.2f}s')
 
-    return { 'date': timestamp, 'freqs': freqs, 'amps': amps, 'h': hvalue, 'aci': acivalue, 'recMaxHertz': recMaxHertz }
+    return { 'freqs': freqs, 'amps': amps, 'h': hvalue, 'aci': acivalue, 'recMaxHertz': recMaxHertz }

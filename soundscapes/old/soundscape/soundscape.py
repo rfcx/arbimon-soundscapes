@@ -1,5 +1,6 @@
 import png
 from datetime import datetime
+from functools import reduce
 from ..a2pyutils import bmpio
 from . import scidx
 

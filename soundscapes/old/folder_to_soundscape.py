@@ -2,11 +2,14 @@ import os
 import time
 import shutil
 import multiprocessing
+import re
+from datetime import datetime
 from joblib import Parallel, delayed
 from .soundscape import soundscape
 from .indices import indices
 from .a2pyutils import palette
 from .process_rec import process_rec
+from .soundscape.set_visual_scale_lib import get_norm_vector
 
 def folder_to_soundscape(folder, output_folder, aggregation = 'time_of_day', bin_size = 86, threshold = 0, threshold_type = 'absolute', frequency = 0, normalize = 1):
     num_cores = multiprocessing.cpu_count()
@@ -28,24 +31,24 @@ def folder_to_soundscape(folder, output_folder, aggregation = 'time_of_day', bin
         print("# Bin size must be a positive number. Input was: " + str(bin_size))
         return
 
-    recs_to_process = os.listdir(folder)
+    files = os.listdir(folder)
+    recs_to_process = []
+    timestamps = []
+    for f in files:
+        timestamp = parse_timestamp(f)
+        if timestamp is None:
+            continue
+        recs_to_process.append(f)
+        timestamps.append(timestamp)
+
     if len(recs_to_process) < 1:
-        print("no recordings on folder.")
+        print("no recordings in folder")
         return
-
-    peaknumbers = indices.Indices(aggregation_params)
-
-    hIndex = indices.Indices(aggregation_params)
-
-    aciIndex = indices.Indices(aggregation_params)
 
     start_time = time.time()
     resultsParallel = Parallel(n_jobs=num_cores)(
         delayed(process_rec)(folder + '/' + recordingi, bin_size, frequency, threshold) for recordingi in recs_to_process
     )
-    if len(resultsParallel) == 0:
-        print('no results')
-        return
     print(f'timing: total processing recs: {time.time() - start_time:.2f}s')
 
     start_time = time.time()
@@ -56,18 +59,23 @@ def folder_to_soundscape(folder, output_folder, aggregation = 'time_of_day', bin
                 max_hertz = result['recMaxHertz']
     max_bins = int(max_hertz / bin_size)
     scp = soundscape.Soundscape(aggregation_params, bin_size, max_bins, amplitude_th=threshold, threshold_type=threshold_type)
+    peaknumbers = indices.Indices(aggregation_params)
+    hIndex = indices.Indices(aggregation_params)
+    aciIndex = indices.Indices(aggregation_params)
     i = 0
-    for result in resultsParallel:
-        if result is not None:
-            i = i + 1
-            if result['freqs'] is not None:
-                if len(result['freqs']) > 0:
-                    scp.insert_peaks(result['date'], result['freqs'], result['amps'], i)
-                peaknumbers.insert_value(result['date'] ,len(result['freqs']),i)
-            if result['h'] is not None:
-                hIndex.insert_value(result['date'] ,result['h'],i)
-            if result['aci'] is not None:
-                aciIndex.insert_value(result['date'] ,result['aci'],i)
+    for idx, result in enumerate(resultsParallel):
+        if result is None:
+            continue
+        i = i + 1
+        timestamp = timestamps[idx]
+        if result['freqs'] is not None:
+            if len(result['freqs']) > 0:
+                scp.insert_peaks(timestamp, result['freqs'], result['amps'], i)
+            peaknumbers.insert_value(timestamp ,len(result['freqs']), i)
+        if result['h'] is not None:
+            hIndex.insert_value(timestamp, result['h'], i)
+        if result['aci'] is not None:
+            aciIndex.insert_value(timestamp, result['aci'], i)
     print(f'timing: soundscape process: {time.time() - start_time:.2f}s')
 
     start_time = time.time()
@@ -89,8 +97,17 @@ def folder_to_soundscape(folder, output_folder, aggregation = 'time_of_day', bin
         statsMin = aggregation_params['range'][0]
         statsMax = aggregation_params['range'][1]
 
+    if normalize:
+        scp.norm_vector = get_norm_vector(timestamps, aggregation_params)
+
     scp.write_image(working_folder + imgout, palette.get_palette())
     print(f'timing: write results: {time.time() - start_time:.2f}s')
 
         
-
+def parse_timestamp(file_path):
+    # Parse filename for timestamp
+    timestamp_match = re.search(r'(\d{4}-\d{2}-\d{2}_\d{2}-\d{2})\.\w+', file_path)
+    if not timestamp_match:
+        print('Timestamp not found in filename')
+        return None
+    return datetime.strptime(timestamp_match.group(1), '%Y-%m-%d_%H-%M')
