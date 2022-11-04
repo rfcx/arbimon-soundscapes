@@ -55,27 +55,26 @@ def folder_to_soundscape(folder, output_folder, aggregation = 'time_of_day', bin
     max_hertz = 22050
     for result in resultsParallel:
         if result is not None:
-            if   max_hertz < result['recMaxHertz']:
+            if max_hertz < result['recMaxHertz']:
                 max_hertz = result['recMaxHertz']
     max_bins = int(max_hertz / bin_size)
     scp = soundscape.Soundscape(aggregation_params, bin_size, max_bins, amplitude_th=threshold, threshold_type=threshold_type)
     peaknumbers = indices.Indices(aggregation_params)
     hIndex = indices.Indices(aggregation_params)
     aciIndex = indices.Indices(aggregation_params)
-    i = 0
+
     for idx, result in enumerate(resultsParallel):
         if result is None:
             continue
-        i = i + 1
         timestamp = timestamps[idx]
         if result['freqs'] is not None:
             if len(result['freqs']) > 0:
-                scp.insert_peaks(timestamp, result['freqs'], result['amps'], i)
-            peaknumbers.insert_value(timestamp ,len(result['freqs']), i)
+                scp.insert_peaks(timestamp, result['freqs'], result['amps'], idx)
+            peaknumbers.insert_value(timestamp ,len(result['freqs']), idx)
         if result['h'] is not None:
-            hIndex.insert_value(timestamp, result['h'], i)
+            hIndex.insert_value(timestamp, result['h'], idx)
         if result['aci'] is not None:
-            aciIndex.insert_value(timestamp, result['aci'], i)
+            aciIndex.insert_value(timestamp, result['aci'], idx)
     print(f'timing: soundscape process: {time.time() - start_time:.2f}s')
 
     start_time = time.time()

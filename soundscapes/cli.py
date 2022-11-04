@@ -9,7 +9,7 @@ def main(batch_config):
     log.info("PROCESS: Start")
 
     # Run job
-    folder_to_soundscape('/source', '/output', 'time_of_day', 86, 0.005, 'absolute', 100)
+    folder_to_soundscape('/source', '/output', 'time_of_day', 86, 0.005, 'absolute', 100, 0)
 
     log.info("PROCESS: End")
 

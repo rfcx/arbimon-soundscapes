@@ -20,13 +20,13 @@ def process_rec(rec, bin_size, frequency, threshold):
         rec_wav = rec
     else:
         return None
-    start_time = time.time()
     if not os.path.isfile(rec_wav):
+        start_time = time.time()
         command = ['/usr/bin/sox', rec, rec_wav]
         proc = subprocess.run(command, capture_output=True, text=True)
+        print(f'timing: rec wav conversion: {time.time() - start_time:.2f}s')
         if not os.path.isfile(rec_wav):
             return None
-    print(f'timing: rec wav conversion: {time.time() - start_time:.2f}s')
 
     # Run fpeaks
     start_time = time.time()
