@@ -64,6 +64,12 @@ work_fpeaks = function(filename, threshold, bin.size, frequency, norm.channel=T,
                 return('err1')
                 quit()
             });
+
+            # Newer versions of seewave output `meanspec` 128 times smaller (reverse this)
+            seewaveMajorVersion = as.numeric(substr(packageVersion("seewave"), 1, 1))
+            if (seewaveMajorVersion >= 2) {
+                spec[,2] <- spec[,2] * 128
+            }
             
             epsilonValue = 0.00001
             if(as.numeric(threshold) > 0.00001){
