@@ -213,6 +213,7 @@ class Soundscape():
             self.bins, scalefn,
             0, height, offsetx, offsetx + width, amplitude_th
         ))
+        fout.close()
 
     def write_index(self, indexout):
         bins = self.bins

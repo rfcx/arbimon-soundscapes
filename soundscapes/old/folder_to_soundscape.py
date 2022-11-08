@@ -11,7 +11,10 @@ from .a2pyutils import palette
 from .process_rec import process_rec
 from .soundscape.set_visual_scale_lib import get_norm_vector
 
-def folder_to_soundscape(folder, output_folder, aggregation = 'time_of_day', bin_size = 86, threshold = 0, threshold_type = 'absolute', frequency = 0, normalize = 1):
+#
+# threshold_type = 'absolute' (default) or 'relative-to-peak-maximum'
+
+def folder_to_soundscape(folder, output_folder, aggregation = 'time_of_day', bin_size = 86, threshold = 0.0, threshold_type = 'absolute', frequency = 0, normalize = 1):
     num_cores = multiprocessing.cpu_count()
 
     working_folder = output_folder+"/results/"
@@ -54,9 +57,8 @@ def folder_to_soundscape(folder, output_folder, aggregation = 'time_of_day', bin
     start_time = time.time()
     max_hertz = 22050
     for result in resultsParallel:
-        if result is not None:
-            if max_hertz < result['recMaxHertz']:
-                max_hertz = result['recMaxHertz']
+        if result is not None and max_hertz < result['recMaxHertz']:
+            max_hertz = result['recMaxHertz']
     max_bins = int(max_hertz / bin_size)
     scp = soundscape.Soundscape(aggregation_params, bin_size, max_bins, amplitude_th=threshold, threshold_type=threshold_type)
     peaknumbers = indices.Indices(aggregation_params)

@@ -1,5 +1,6 @@
 import os
 import subprocess
+import tempfile
 import json
 import time
 
@@ -12,10 +13,11 @@ def process_rec(rec, bin_size, frequency, threshold):
     print(f'processing {rec}')
 
     # Convert file to wav if needed
+    temp_dir = tempfile.TemporaryDirectory()
     if rec.endswith('.flac'):
-        rec_wav = rec.replace('.flac','.wav')
+        rec_wav = temp_dir.name + os.path.basename(rec).replace('.flac','.wav')
     elif rec.endswith('.opus'):
-        rec_wav = rec.replace('.opus','.wav')
+        rec_wav = temp_dir.name + os.path.basename(rec).replace('.opus','.wav')
     elif rec.endswith('.wav'):
         rec_wav = rec
     else:
@@ -83,5 +85,7 @@ def process_rec(rec, bin_size, frequency, threshold):
         recSampleRate = float(stdout)
     recMaxHertz = float(recSampleRate) / 2.0
     print(f'timing: rec get sr: {time.time() - start_time:.2f}s')
+
+    temp_dir.cleanup()
 
     return { 'freqs': freqs, 'amps': amps, 'h': hvalue, 'aci': acivalue, 'recMaxHertz': recMaxHertz }
