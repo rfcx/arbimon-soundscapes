@@ -1,13 +1,13 @@
 FROM python:3.8-buster AS soundscapes
 
-# Install R, sox
-RUN apt update && \
-    apt install -y r-base sox && \
-    Rscript -e 'install.packages("seewave")'
-# Install R, sox - use old version of seewave (matching arbimon-jobs)  
-# RUN apt update && \
-#     apt install -y r-base sox r-cran-devtools libsndfile-dev fftw3 fftw3-dev pkg-config && \
-#     Rscript -e 'require(devtools); install_version("seewave", version="1.7.6", repos="https://cran.r-project.org")'
+# Install R, sox and libsndfile/libfftw (required by seewave)
+RUN apt-get update && \
+    apt-get install -y sox r-base r-cran-devtools libsndfile-dev libfftw3-3 libfftw3-dev pkg-config
+
+# Install seewave (R package)
+ARG SEEWAVE_VERSION=1.7.6
+RUN [[ "$SEEWAVE_VERSION" == "latest" ]] && Rscript -e 'install.packages("seewave")' || \
+    Rscript -e "require(devtools); install_version(\"seewave\", version=\"$SEEWAVE_VERSION\", repos=\"https://cran.r-project.org\")"
 
 ## Install Python dependencies
 ADD requirements.txt /requirements.txt
