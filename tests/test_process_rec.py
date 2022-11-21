@@ -13,4 +13,3 @@ def test_wav():
     assert result['amps'] == pytest.approx([0.28270, 0.05240, 0.05435], 0.0001)
     assert result['aci'] == pytest.approx(145.78, 0.01)
     assert result['recMaxHertz'] == 11025
-
