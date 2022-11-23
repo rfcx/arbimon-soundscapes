@@ -60,3 +60,18 @@ def test_wav_normalized(output_folder):
     assert image_w_actual == image_w_expected
     assert image_h_actual == image_h_expected
     assert image_pixels_actual == image_pixels_expected
+
+
+def test_flac(output_folder):
+    # Arrange
+    folder = 'tests/data/flac_coqui'
+
+    # Act
+    folder_to_soundscape(folder, output_folder, 'time_of_day', 86, 0.005, 'absolute', 100, 1)
+
+    # Assert - image was downloaded from https://arbimon.rfcx.org/project/perm-stations/visualizer/soundscape/6656/
+    image_w_expected, image_h_expected, image_pixels_expected = read_png('tests/data/flac_coqui/image-hour-86-0.005-100-1.png')
+    image_w_actual, image_h_actual, image_pixels_actual = read_png(output_folder + '/results/image.png')
+    assert image_w_actual == image_w_expected
+    assert image_h_actual == image_h_expected
+    assert image_pixels_actual == image_pixels_expected
