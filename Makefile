@@ -18,6 +18,15 @@ run:
 test:
 	@pytest
 
+lint:
+	@echo "\n${BLUE}Running Flake8 against source and test files...${NC}\n"
+	@flake8
+	@echo "\n${BLUE}Running Bandit against source files...${NC}\n"
+	@bandit -r -c bandit.yaml $(MODULE)
+
+lint-fix:
+	@autoflake8 --in-place -r **/*.py
+
 build-dev:
 	@echo "\n${BLUE}Building development image with labels:\n"
 	@echo "name: $(MODULE)"
