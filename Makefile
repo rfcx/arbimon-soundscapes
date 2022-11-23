@@ -25,7 +25,8 @@ lint:
 	@bandit -r -c bandit.yaml $(MODULE)
 
 lint-fix:
-	@autoflake8 --in-place -r **/*.py
+	@echo "\n${BLUE}Running autoflake8 against source and test files...${NC}\n"
+	@autoflake8 --in-place -r soundscapes tests
 
 build-dev:
 	@echo "\n${BLUE}Building development image with labels:\n"

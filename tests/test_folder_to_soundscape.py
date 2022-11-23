@@ -1,7 +1,7 @@
 import os
 import png
-import pytest
 import tempfile
+import pytest
 from soundscapes.old.folder_to_soundscape import folder_to_soundscape
 
 def read_one_line_float_array_file(path):
@@ -12,7 +12,7 @@ def read_one_line_float_array_file(path):
 
 def read_png(path):
     reader = png.Reader(path)
-    w, h, pixels, metadata = reader.read_flat()
+    w, h, pixels, _ = reader.read_flat()
     return w, h, pixels
 
 @pytest.fixture()
@@ -24,7 +24,7 @@ def output_folder():
 def test_wav(output_folder):
     # Arrange
     folder = 'tests/data/wav_unknown'
-    
+
     # Act
     folder_to_soundscape(folder, output_folder, 'time_of_day', 86, 0.005, 'absolute', 100, 0)
 
