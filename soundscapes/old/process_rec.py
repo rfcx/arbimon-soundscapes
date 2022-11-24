@@ -3,6 +3,7 @@ import subprocess
 import tempfile
 import json
 import time
+import maad
 
 (compute_index_h, compute_index_aci) = (False, True)
 
@@ -65,16 +66,9 @@ def process_rec(rec, bin_size, frequency, threshold):
         hvalue=-1
 
     # Run aci
-    if compute_index_aci:
-        start_time = time.time()
-        proc = subprocess.run(['/usr/bin/Rscript', currDir+'/aci.R', rec_wav], capture_output=True, text=True)
-        stdout, stderr = proc.stdout, proc.stderr
-        acivalue = None
-        if stdout and 'err' not in stdout:
-            acivalue = float(stdout)
-        print(f'timing: rec calc aci: {time.time() - start_time:.2f}s')
-    else:
-        acivalue=-1
+    s, fs = maad.sound.load(rec_wav)
+    aci_spectrogram, _, _, _ = maad.sound.spectrogram(s, fs, mode='amplitude', nperseg=512, noverlap=0)  
+    _, _ , aci  = maad.features.acoustic_complexity_index(aci_spectrogram)
 
     # Get sample rate
     start_time = time.time()
@@ -88,4 +82,4 @@ def process_rec(rec, bin_size, frequency, threshold):
 
     temp_dir.cleanup()
 
-    return { 'freqs': freqs, 'amps': amps, 'h': hvalue, 'aci': acivalue, 'recMaxHertz': recMaxHertz }
+    return { 'freqs': freqs, 'amps': amps, 'h': -1, 'aci': aci, 'recMaxHertz': recMaxHertz }
