@@ -3,7 +3,8 @@ import subprocess
 import tempfile
 import json
 import time
-import maad
+from soundscapes.indices import indices
+
 
 (compute_index_h, compute_index_aci) = (False, True)
 
@@ -31,8 +32,7 @@ def process_rec(rec, bin_size, frequency, threshold):
         if not os.path.isfile(rec_wav):
             return None
 
-    # Run fpeaks
-    start_time = time.time()
+    # Run fpeaks in R
     proc = subprocess.run([
         '/usr/bin/Rscript', currDir+'/fpeaks.R',
         rec_wav,
@@ -41,34 +41,19 @@ def process_rec(rec, bin_size, frequency, threshold):
         str(frequency)
     ], capture_output=True, text=True)
     stdout, stderr = proc.stdout, proc.stderr
-    print(f'timing: rec calc fpeaks: {time.time() - start_time:.2f}s')
-
-    # Parse fpeaks output
-    if stderr and 'LC_TIME' not in stderr and 'OpenBLAS' not in stderr:
-        return None
     ff=json.loads(stdout)
-    freqs =[]
-    amps =[]
+    freqs_expected = []
+    amps_expected = []
     for i in range(len(ff)):
-        freqs.append(ff[i]['f'])
-        amps.append(ff[i]['a'])
-
-    # Run h
-    if compute_index_h:
-        start_time = time.time()
-        proc = subprocess.run(['/usr/bin/Rscript', currDir+'/h.R', rec_wav], capture_output=True, text=True)
-        stdout, stderr = proc.stdout, proc.stderr
-        hvalue = None
-        if stdout and 'err' not in stdout:
-            hvalue = float(stdout)
-        print(f'timing: rec calc h: {time.time() - start_time:.2f}s')
-    else:
-        hvalue=-1
-
-    # Run aci
-    s, fs = maad.sound.load(rec_wav)
-    aci_spectrogram, _, _, _ = maad.sound.spectrogram(s, fs, mode='amplitude', nperseg=512, noverlap=0)  
-    _, _ , aci  = maad.features.acoustic_complexity_index(aci_spectrogram)
+        freqs_expected.append(ff[i]['f'])
+        amps_expected.append(ff[i]['a'])
+    
+    # Calc fpeaks and aci in python
+    freqs, amps, aci = indices.get(rec_wav, bin_size, frequency, threshold)
+    print(freqs_expected)
+    print(freqs)
+    print(amps_expected)
+    print(amps)
 
     # Get sample rate
     start_time = time.time()
