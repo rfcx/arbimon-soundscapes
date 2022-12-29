@@ -15,11 +15,6 @@ RUN pip3 install --no-cache-dir --upgrade pip && \
     pip3 install --no-cache-dir autoflake8 flake8 bandit && \
     pip3 install --no-cache-dir -r /requirements.txt
 
-ARG RFCX_SDK_VERSION=0.2.3
-RUN wget https://github.com/rfcx/rfcx-sdk-python/releases/download/${RFCX_SDK_VERSION}/rfcx-${RFCX_SDK_VERSION}-py3-none-any.whl && \
-    pip3 install --no-cache-dir /rfcx-${RFCX_SDK_VERSION}-py3-none-any.whl && \
-    rm /rfcx-${RFCX_SDK_VERSION}-py3-none-any.whl
-
 ADD build/entrypoint.sh /entrypoint.sh
 RUN chmod 700 /entrypoint.sh && mkdir /app
 ENTRYPOINT [ "/entrypoint.sh" ]
