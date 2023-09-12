@@ -1,5 +1,6 @@
 # The binary to build (just the basename).
 MODULE := soundscapes
+SCRIPT ?= cli
 
 # Where to push the docker image.
 REGISTRY ?= 887044485231.dkr.ecr.eu-west-1.amazonaws.com
@@ -37,14 +38,28 @@ build-dev:
 # Example: make shell CMD="-c 'date > datefile'"
 shell: build
 	@echo "\n${BLUE}Launching a shell in the containerized build environment...${NC}\n"
-		@docker run                                                 \
-			-ti                                                     \
-			--rm                                                    \
-			--entrypoint /bin/bash                                  \
-			-v ${PWD}:/app                                          \
-			-u $$(id -u):$$(id -g)                                  \
-			$(MODULE):$(TAG)										\
-			$(CMD)
+	@docker run                                                 \
+		-ti                                                     \
+		--rm                                                    \
+		--entrypoint /bin/bash                                  \
+		-v ${PWD}:/app                                          \
+		-u $$(id -u):$$(id -g)                                  \
+		$(MODULE):$(TAG)										\
+		$(CMD)
+
+serve-up:
+	@echo "\n${BLUE}Running docker compose up..."
+	@echo "    use \`make serve-run SCRIPT=batch_legacy\` to run"
+	@echo "    use \`make serve-down\` when you are finished${NC}\n"
+	@docker compose up -d
+
+serve-run:
+	@echo "\n${BLUE}Launching $(SCRIPT) in docker...${NC}\n"
+	@docker compose exec app python -m $(MODULE).$(SCRIPT)
+
+serve-down:
+	@echo "\n${BLUE}Running docker compose down...${NC}\n"
+	@docker compose down
 
 version:
 	@echo $(TAG)

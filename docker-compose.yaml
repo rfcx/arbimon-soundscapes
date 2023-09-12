@@ -1,0 +1,21 @@
+version: "3.8"
+include:
+  - ./db/docker-compose.yaml
+services:
+  app:
+    image: soundscapes
+    build:
+      context: .
+      dockerfile: ./build/Dockerfile
+      target: soundscapes
+    volumes:
+      - $PWD/soundscapes:/app/soundscapes
+    environment:
+      - DB_HOST=mysql
+      - DB_NAME=arbimon2
+      - DB_USER=admin
+      - DB_PASSWORD=admin-secret
+    env_file: .env
+    command: "tail -f /dev/null"
+    depends_on:
+      - mysql
