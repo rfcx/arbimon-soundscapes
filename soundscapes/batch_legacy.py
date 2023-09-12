@@ -1,24 +1,26 @@
 import argparse
 from .config.logs import get_logger
 from .config.read_config import read_config
-from .legacy.playlist_to_soundscape import playlist_to_soundscape
-from .legacy.db import connect, get_automated_user, get_sites, create_playlist, create_job
+from .old.playlist_to_soundscape import playlist_to_soundscape
+from .old.db import connect, get_automated_user, get_sites, create_playlist, create_job, find_project
 
 log = get_logger()
 
-def main(batch_config):
-    log.info("PROCESS: Start")
-
-    project_id = 1907
-    sites = 'Park*'
-    year = 2022
-    soundscape_threshold = 0.05
-
+def main(config):
     conn = connect()
+    
+    project_id = find_project(conn, config['project'])
+    if project_id is None:
+        log.critical('Project not found')
+        exit(1)
+    
+    sites = config['sites'] if 'sites' in config else None
+    year = config['year'] if 'year' in config else None
+    soundscape_threshold = config['soundscape_threshold']
 
     user_id = get_automated_user(conn)
 
-    # Loop over sites
+    # One soundscape (and playlist) for each site
     sites = get_sites(conn, project_id, sites)
     for (site_id, site_name) in sites.items():
         print('Processing site', site_id, site_name)
@@ -36,20 +38,10 @@ def main(batch_config):
         playlist_to_soundscape(job_id)
         print('- Completed job', job_id)
 
-    log.info("PROCESS: End")
-
-def get_args():
-    parser = argparse.ArgumentParser()
-    # Config files
-    parser.add_argument('--config', help="Config file path", type=argparse.FileType('r'))
-    parser.add_argument('--stdin', help="Config via stdin", action='store_true')
-    # Overrides
-    parser.add_argument('--destination', help="Send detections to", type=str)
-
-    return parser.parse_args()
-
 
 if __name__ == "__main__":
-    args = get_args()
-    config = read_config(args)
+    log.info('PROCESS: Initialization')
+    config = read_config()
+    log.info('PROCESS: Job started')
     main(config)
+    log.info('PROCESS: Job completed')

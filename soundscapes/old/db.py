@@ -35,6 +35,25 @@ def get_automated_user(conn):
     cursor.close()
     return user_id
 
+def find_project(conn, url_or_id):
+    cursor = conn.cursor()
+    
+    conditions = [
+        'url = %s',
+        'external_id = %s',
+        'project_id = %s'
+    ]
+    for condition in conditions:
+        cursor.execute(f'select project_id from projects where {condition}', (url_or_id, ))
+        result = cursor.fetchone()
+        if result is not None:
+            cursor.close()
+            (project_id,) = result
+            return project_id
+    
+    cursor.close()
+    return None
+
 
 def get_sites(conn, project_id, query = None):
     cursor = conn.cursor()
