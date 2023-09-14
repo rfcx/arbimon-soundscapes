@@ -13,7 +13,8 @@ import soundfile as sf
 
 config = {
     's3_access_key_id': os.getenv('AWS_ACCESS_KEY_ID'),
-    's3_secret_access_key': os.getenv('AWS_SECRET_ACCESS_KEY')
+    's3_secret_access_key': os.getenv('AWS_SECRET_ACCESS_KEY'),
+    's3_port': int(os.getenv('S3_PORT')) if 'S3_PORT' in os.environ else None
 }
 
 encodings = {
@@ -138,7 +139,7 @@ class Rec:
         self.status = 'HasAudioData'
 
     def getAudioFromUri(self):
-        c = boto.s3.connection.S3Connection(config['s3_access_key_id'], config['s3_secret_access_key'])
+        c = boto.s3.connection.S3Connection(config['s3_access_key_id'], config['s3_secret_access_key'], port=config['s3_port'])
         b = c.get_bucket(self.bucket, validate=False)
         k = b.get_key(self.uri)
         if k is None:
