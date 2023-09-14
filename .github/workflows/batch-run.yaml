@@ -10,6 +10,7 @@ on:
       year:
         description: Single year (e.g. 2022) - empty for all years
       soundscape_aggregation:
+        description: Time aggregration
         type: choice
         default: 'time_of_day'
         options:
@@ -21,6 +22,7 @@ on:
         # - 'year'
         required: true
       soundscape_bin_size:
+        description: Bin size/bandwidth (Hz)
         type: choice
         default: '344'
         options:
@@ -31,8 +33,12 @@ on:
         # - '21'
         required: true
       soundscape_normalize:
-        type: boolean
-        default: true
+        description: Normalize results
+        type: choice
+        default: '1'
+        options:
+          - '1'
+        # - '0'
         required: true
       soundscape_threshold:
         description: Peak filtering amplitude threshold
@@ -81,19 +87,19 @@ jobs:
                         name: arbimon-soundscapes-config
                   env:
                     - name: PROJECT
-                      value: ${{ inputs.project }}
+                      value: '${{ inputs.project }}'
                     - name: SITES
-                      value: ${{ inputs.sites }}
+                      value: '${{ inputs.sites }}'
                     - name: YEAR
-                      value: ${{ inputs.year }}
+                      value: '${{ inputs.year }}'
                     - name: SOUNDSCAPE_AGGREGATION
-                      value: ${{ inputs.soundscape_aggregation }}
+                      value: '${{ inputs.soundscape_aggregation }}'
                     - name: SOUNDSCAPE_BIN_SIZE
-                      value: ${{ inputs.soundscape_bin_size }}
+                      value: '${{ inputs.soundscape_bin_size }}'
                     - name: SOUNDSCAPE_NORMALIZE
-                      value: ${{ inputs.soundscape_normalize }}
+                      value: '${{ inputs.soundscape_normalize }}'
                     - name: SOUNDSCAPE_THRESHOLD
-                      value: ${{ inputs.soundscape_threshold }}
+                      value: '${{ inputs.soundscape_threshold }}'
                 restartPolicy: Never
             backoffLimit: 0
           EOF
