@@ -139,6 +139,7 @@ class Rec:
         self.status = 'HasAudioData'
 
     def getAudioFromUri(self):
+        print('getAudioFromUri', config['s3_access_key_id'], config['s3_secret_access_key'], self.bucket, self.uri)
         c = boto.s3.connection.S3Connection(config['s3_access_key_id'], config['s3_secret_access_key'], port=config['s3_port'])
         b = c.get_bucket(self.bucket, validate=False)
         k = b.get_key(self.uri)
