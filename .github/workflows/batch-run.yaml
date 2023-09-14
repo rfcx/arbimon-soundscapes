@@ -1,0 +1,108 @@
+name: 'Create batch run'
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: Project identifier (core or arbimon) or url slug (e.g. puerto-rico-island-wide)
+        required: true
+      sites:
+        description: Comma-separated list of site names including wildcards (e.g. AB2,AB3,CD*) - empty for all sites
+      year:
+        description: Single year (e.g. 2022) - empty for all years
+      soundscape_aggregation:
+        type: choice
+        default: 'time_of_day'
+        options:
+        - 'time_of_day'
+        # - 'day_of_month'
+        # - 'day_of_year'
+        # - 'month_in_year'
+        # - 'day_of_week'
+        # - 'year'
+        required: true
+      soundscape_bin_size:
+        type: choice
+        default: '344'
+        options:
+        - '344'
+        # - '172'
+        # - '86'
+        # - '43'
+        # - '21'
+        required: true
+      soundscape_normalize:
+        type: boolean
+        default: true
+        required: true
+      soundscape_threshold:
+        description: Peak filtering amplitude threshold
+        default: '0.05'
+        required: true
+      environment:
+        description: Environment (namespace)
+        type: choice
+        default: 'production'
+        options:
+        - 'production'
+        - 'staging'
+        - 'testing'
+        required: true
+jobs:
+  create-job:
+    runs-on: deployment-runner
+    env:
+      ECR_REGISTRY: '887044485231.dkr.ecr.eu-west-1.amazonaws.com'
+      ECR_REPO: 'arbimon-soundscapes'
+      JOB_NAME: 'arbimon-soundscape'
+    steps:
+      - name: 'Setup: Generate job unique number'
+        run: echo "JOB_NUMBER=$(date +%s)" >> $GITHUB_ENV
+    
+      - name: 'Deploy: Generate job definition file'
+        run: |
+          cat <<EOF > job.yaml
+          apiVersion: batch/v1
+          kind: Job
+          metadata:
+            name: ${{ env.JOB_NAME }}-${{ env.JOB_NUMBER }}
+          spec:
+            ttlSecondsAfterFinished: 86400
+            template:
+              spec:
+                containers:
+                - name: ${{ env.JOB_NAME }}
+                  image: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:latest
+                  imagePullPolicy: Always
+                  command: ["batch_legacy"]
+                  envFrom:
+                    - secretRef:
+                        name: arbimon-soundscapes-secret
+                    - configMapRef:
+                        name: arbimon-soundscapes-config
+                  env:
+                    - name: PROJECT
+                      value: ${{ inputs.project }}
+                    - name: SITES
+                      value: ${{ inputs.sites }}
+                    - name: YEAR
+                      value: ${{ inputs.year }}
+                    - name: SOUNDSCAPE_AGGREGATION
+                      value: ${{ inputs.soundscape_aggregation }}
+                    - name: SOUNDSCAPE_BIN_SIZE
+                      value: ${{ inputs.soundscape_bin_size }}
+                    - name: SOUNDSCAPE_NORMALIZE
+                      value: ${{ inputs.soundscape_normalize }}
+                    - name: SOUNDSCAPE_THRESHOLD
+                      value: ${{ inputs.soundscape_threshold }}
+                restartPolicy: Never
+            backoffLimit: 0
+          EOF
+          cat job.yaml
+
+      - name: 'Deploy: Create job'
+        # v1 (1.21.2) @ 03 Nov 2021 https://github.com/actions-hub/kubectl/tags
+        uses: actions-hub/kubectl@365773786ebd92c7b36b6ab80e17d4a213ab0cd1
+        env:
+          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG_SUPER }}
+        with:
+          args: apply -f job.yaml -n ${{ inputs.environment }}
