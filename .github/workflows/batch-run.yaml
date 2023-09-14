@@ -79,7 +79,7 @@ jobs:
                 - name: ${{ env.JOB_NAME }}
                   image: ${{ env.ECR_REGISTRY }}/${{ env.ECR_REPO }}:latest
                   imagePullPolicy: Always
-                  command: ["batch_legacy"]
+                  args: ["batch_legacy"]
                   envFrom:
                     - secretRef:
                         name: arbimon-soundscapes-secret
