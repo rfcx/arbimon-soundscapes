@@ -7,7 +7,7 @@ services:
     build:
       context: .
       dockerfile: ./build/Dockerfile
-      target: soundscapes
+      target: arbimon-soundscapes
     volumes:
       - $PWD/soundscapes:/app/soundscapes
     environment:

@@ -1,4 +1,4 @@
-FROM python:3.8-buster AS soundscapes
+FROM python:3.8-buster AS arbimon-soundscapes
 
 # Install R, sox and libsndfile/libfftw (required by seewave)
 RUN apt-get update && \
