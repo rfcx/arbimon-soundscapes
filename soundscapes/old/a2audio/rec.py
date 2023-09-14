@@ -9,7 +9,7 @@ import boto.s3.connection
 import numpy as np
 import warnings
 warnings.filterwarnings( "ignore", module = "matplotlib\..*" )
-import maad
+import soundfile as sf
 
 config = {
     's3_access_key_id': os.getenv('AWS_ACCESS_KEY_ID'),
@@ -200,15 +200,22 @@ class Rec:
         return enc
 
     def readAudioFromFile(self):
-
-        if self.filename.split('.')[-1]=='opus':
+        file_extension = self.filename.split('.')[-1]
+        if file_extension == 'opus':
             process = subprocess.Popen(['opusdec', self.localfilename, self.localfilename+'.wav'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             out, err = process.communicate()
             self.localfilename = self.localfilename+'.wav'
-            print('decoded opus file: '+str(self.filename))
+            print('converted opus file: '+str(self.filename))
+        elif file_extension == 'flac':
+            command = ['/usr/bin/sox', self.localfilename, self.localfilename+'.wav']
+            proc = subprocess.run(command, capture_output=True, text=True)
+            # print('sox stdout:', proc.stdout)
+            # print('sox stderr:', proc.stderr)
+            self.localfilename = self.localfilename+'.wav'
+            print('converted flac file: '+str(self.filename))
 
         try:
-            s, fs = maad.sound.load(self.localfilename)
+            s, fs = sf.read(self.localfilename)
             if self.logs:
                 print(
                     "sampling rate = {} Hz, length = {} samples"
@@ -220,9 +227,10 @@ class Rec:
             self.original = s
             self.status = 'AudioInBuffer'
             return True
-        except:
+        except Exception as e:
             if self.logs:
-                print("error opening : " + self.filename)
+                print("error opening: " + self.filename)
+                print("error:", e)
             return False
 
     def removeFiles(self):

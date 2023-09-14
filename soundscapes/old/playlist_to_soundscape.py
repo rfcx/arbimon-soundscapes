@@ -25,6 +25,8 @@ config = {
     's3_legacy_bucket_name': os.getenv('S3_LEGACY_BUCKET_NAME')
 }
 
+currDir = os.path.dirname(os.path.abspath(__file__))
+
 # aggregation is 'time_of_day' (see soundscape.py for options)
 def get_norm_vector(db, aggregation):
     aggregation = soundscape.aggregations[aggregation]
@@ -252,7 +254,7 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
                     db1.close()
                     return None
                 elif stdout:
-                    if 'err' in stdout:
+                    if 'err' in str(stdout):
                         print('err in stdout')
                         print((
                             '------------------END WORKER THREAD LOG (id:' +
@@ -273,7 +275,7 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
                         stdout, stderr = proc.communicate()
 
                         hvalue = None
-                        if stdout and 'err' not in stdout:
+                        if stdout and 'err' not in str(stdout):
                             hvalue = float(stdout)
                     else:
                         hvalue=-1
@@ -286,7 +288,7 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
                         stdout, stderr = proc.communicate()
 
                         acivalue = None
-                        if stdout and 'err' not in stdout:
+                        if stdout and 'err' not in str(stdout):
                             acivalue = float(stdout)
                     else:
                         acivalue=-1
@@ -298,7 +300,7 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
                     stdout, stderr = proc.communicate()
 
                     recSampleRate = None
-                    if stdout and 'err' not in stdout:
+                    if stdout and 'err' not in str(stdout):
                         recSampleRate = float(stdout)
                     recMaxHertz = float(recSampleRate)/2.0
                     os.remove(localFile)
