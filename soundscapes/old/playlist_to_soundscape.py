@@ -327,9 +327,11 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
     #finish function
     #------------------------------- PARALLEL PROCESSING OF RECORDINGS --------------------------------------------------------------------------------------------------------------------
         start_time_all = time.time()
-        resultsParallel = Parallel(n_jobs=num_cores)(
-            delayed(processRec)(recordingi, config) for recordingi in recsToProcess
-        )
+        # resultsParallel = Parallel(n_jobs=num_cores)(
+        #     delayed(processRec)(recordingi, config) for recordingi in recsToProcess
+        # )
+        resultsParallel = [processRec(recordingi, config) for recordingi in recsToProcess]
+
         #----------------------------END PARALLEL --------------------------------------------------------------------------------------------------------------------
         # process result
         print("all recs parallel ---" + str(time.time() - start_time_all))
