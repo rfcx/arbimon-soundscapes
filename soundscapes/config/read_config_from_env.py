@@ -13,6 +13,9 @@ def read_config_from_env() -> dict:
     if "YEAR" in os.environ:
         config['year'] = int(os.getenv("YEAR"))
 
+    if "SOUNDSCAPE_AGGREGATION" in os.environ:
+        config['soundscape_aggregation'] = float(os.getenv("SOUNDSCAPE_AGGREGATION"))
+
     if "SOUNDSCAPE_BIN_SIZE" in os.environ:
         config['soundscape_bin_size'] = float(os.getenv("SOUNDSCAPE_BIN_SIZE"))
 

@@ -14,23 +14,23 @@ on:
         type: choice
         default: 'time_of_day'
         options:
-        - 'time_of_day'
-        # - 'day_of_month'
-        # - 'day_of_year'
-        # - 'month_in_year'
-        # - 'day_of_week'
-        # - 'year'
+          - 'time_of_day'
+          - 'day_of_month'
+          - 'day_of_year'
+          - 'month_in_year'
+          - 'day_of_week'
+          - 'year'
         required: true
       soundscape_bin_size:
         description: Bin size/bandwidth (Hz)
         type: choice
         default: '344'
         options:
-        - '344'
-        # - '172'
-        # - '86'
-        # - '43'
-        # - '21'
+          - '344'
+          - '172'
+          - '86'
+          - '43'
+          - '21'
         required: true
       soundscape_normalize:
         description: Normalize results
@@ -38,7 +38,7 @@ on:
         default: '1'
         options:
           - '1'
-        # - '0'
+          - '0'
         required: true
       soundscape_threshold:
         description: Peak filtering amplitude threshold
@@ -49,9 +49,9 @@ on:
         type: choice
         default: 'production'
         options:
-        - 'production'
-        - 'staging'
-        - 'testing'
+          - 'production'
+          - 'staging'
+          - 'testing'
         required: true
 jobs:
   create-job:

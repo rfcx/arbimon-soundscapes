@@ -1,4 +1,3 @@
-import contextlib
 import os
 import mysql.connector
 
@@ -115,9 +114,14 @@ def create_playlist(conn, project_id, site_id, site_name, year):
     cursor.close()
     return playlist_id, playlist_name
 
-def create_job(conn, playlist_id, user_id, bin_size = 344, threshold = 0.05, normalize = 1):
+def create_job(conn, playlist_id, user_id, aggregation = 'time_of_day', bin_size = 344, threshold = 0.05, normalize = 1):
     cursor = conn.cursor()
 
+    # TODO check for none
+    cursor.execute('select soundscape_aggregation_type_id from soundscape_aggregation_types where identifier = %', (aggregation,))
+    (aggregation_type_id, ) = cursor.fetchone()
+
+    # TODO check for none
     cursor.execute('select project_id, name, total_recordings from playlists where playlist_id = %s', (playlist_id, ))
     (project_id, playlist_name, total_recordings) = cursor.fetchone()
 
@@ -130,8 +134,8 @@ def create_job(conn, playlist_id, user_id, bin_size = 344, threshold = 0.05, nor
 
     cursor.execute(
         '''insert into job_params_soundscape (job_id, playlist_id, name, max_hertz, soundscape_aggregation_type_id, bin_size, threshold, normalize) 
-        values (%s, %s, %s, 24000, 1, %s, %s, %s)''',
-        (job_id, playlist_id, playlist_name, bin_size, threshold, normalize))
+        values (%s, %s, %s, 24000, %s, %s, %s, %s)''',
+        (job_id, playlist_id, playlist_name, aggregation_type_id, bin_size, threshold, normalize))
     conn.commit()
     cursor = conn.cursor()
 
