@@ -6,7 +6,9 @@ from .validate_config import validate_config
 log = get_logger()
 
 default_config = {
-    'soundscape_threshold': 0.05
+    'soundscape_bin_size': 344,
+    'soundscape_threshold': 0.05,
+    'soundscape_normalize': 1
 }
 
 def read_config() -> dict:

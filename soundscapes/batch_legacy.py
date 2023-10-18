@@ -16,7 +16,9 @@ def main(config):
     
     sites = config['sites'] if 'sites' in config else None
     year = config['year'] if 'year' in config else None
+    soundscape_bin_size = config['soundscape_bin_size']
     soundscape_threshold = config['soundscape_threshold']
+    soundscape_normalize = config['soundscape_normalize']
 
     user_id = get_automated_user(conn)
 
@@ -32,7 +34,7 @@ def main(config):
         playlist_id, playlist_name = result
         print('- Created playlist', playlist_id, playlist_name)
 
-        job_id = create_job(conn, playlist_id, user_id, soundscape_threshold)
+        job_id = create_job(conn, playlist_id, user_id, soundscape_bin_size, soundscape_threshold, soundscape_normalize)
         print('- Created and initialized job', job_id)
 
         playlist_to_soundscape(job_id)

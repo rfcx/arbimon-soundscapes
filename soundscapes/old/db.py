@@ -115,7 +115,7 @@ def create_playlist(conn, project_id, site_id, site_name, year):
     cursor.close()
     return playlist_id, playlist_name
 
-def create_job(conn, playlist_id, user_id, threshold = 0.05):
+def create_job(conn, playlist_id, user_id, bin_size = 344, threshold = 0.05, normalize = 1):
     cursor = conn.cursor()
 
     cursor.execute('select project_id, name, total_recordings from playlists where playlist_id = %s', (playlist_id, ))
@@ -129,9 +129,9 @@ def create_job(conn, playlist_id, user_id, threshold = 0.05):
     job_id = cursor.lastrowid
 
     cursor.execute(
-        '''insert into job_params_soundscape (job_id, playlist_id, max_hertz, bin_size, soundscape_aggregation_type_id, name, threshold, normalize) 
-        values (%s, %s, 24000, 344, 1, %s, %s, 1)''',
-        (job_id, playlist_id, playlist_name, threshold))
+        '''insert into job_params_soundscape (job_id, playlist_id, name, max_hertz, soundscape_aggregation_type_id, bin_size, threshold, normalize) 
+        values (%s, %s, %s, 24000, 1, %s, %s, %s)''',
+        (job_id, playlist_id, playlist_name, bin_size, threshold, normalize))
     conn.commit()
     cursor = conn.cursor()
 
