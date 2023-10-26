@@ -142,7 +142,7 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
                     "date": row[2],
                     "legacy": row[3]
                 })
-            print('playlist recordings list retrieved')
+            print('playlist recordings list retrieved - total recs =', totalRecs)
         try:
             with contextlib.closing(db.cursor()) as cursor:
                 cursor.execute('update `jobs` set state="processing", `progress` = 1,\
