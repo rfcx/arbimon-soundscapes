@@ -100,6 +100,9 @@ jobs:
                       value: '${{ inputs.soundscape_normalize }}'
                     - name: SOUNDSCAPE_THRESHOLD
                       value: '${{ inputs.soundscape_threshold }}'
+                  resources:
+                    requests:
+                      ephemeral-storage: '20Gi'
                 restartPolicy: Never
             backoffLimit: 0
           EOF
