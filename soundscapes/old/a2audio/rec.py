@@ -14,7 +14,7 @@ import soundfile as sf
 config = {
     's3_access_key_id': os.getenv('AWS_ACCESS_KEY_ID'),
     's3_secret_access_key': os.getenv('AWS_SECRET_ACCESS_KEY'),
-    's3_port': int(os.getenv('S3_PORT')) if 'S3_PORT' in os.environ else None
+    's3_endpoint': os.getenv('S3_ENDPOINT')
 }
 
 encodings = {
@@ -139,7 +139,10 @@ class Rec:
         self.status = 'HasAudioData'
 
     def getAudioFromUri(self):
-        s3 = boto3.resource('s3', aws_access_key_id=config['s3_access_key_id'], aws_secret_access_key=config['s3_secret_access_key'])
+        s3 = boto3.resource('s3', 
+                            aws_access_key_id=config['s3_access_key_id'], 
+                            aws_secret_access_key=config['s3_secret_access_key'],
+                            endpoint_url=config['s3_endpoint'])
         b = s3.Bucket(self.bucket)
         try:
             b.download_file(self.uri, self.localfilename)

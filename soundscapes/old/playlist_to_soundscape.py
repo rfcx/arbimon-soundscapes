@@ -22,7 +22,8 @@ config = {
     's3_access_key_id': os.getenv('AWS_ACCESS_KEY_ID'),
     's3_secret_access_key': os.getenv('AWS_SECRET_ACCESS_KEY'),
     's3_bucket_name': os.getenv('S3_BUCKET_NAME'),
-    's3_legacy_bucket_name': os.getenv('S3_LEGACY_BUCKET_NAME')
+    's3_legacy_bucket_name': os.getenv('S3_LEGACY_BUCKET_NAME'),
+    's3_endpoint': os.getenv('S3_ENDPOINT')
 }
 
 currDir = os.path.dirname(os.path.abspath(__file__))
@@ -459,7 +460,10 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
             try:
                 print('trying connection to bucket')
                 bucket = None
-                s3 = boto3.resource('s3', aws_access_key_id=config['s3_access_key_id'], aws_secret_access_key=config['s3_secret_access_key'])
+                s3 = boto3.resource('s3', 
+                                    aws_access_key_id=config['s3_access_key_id'], 
+                                    aws_secret_access_key=config['s3_secret_access_key'],
+                                    endpoint_url=config['s3_endpoint'])
                 bucket = s3.Bucket(config['s3_legacy_bucket_name'])
                 bucket.upload_file(working_folder+imgout, imageUri, ExtraArgs={'ACL': 'public-read'})
                 try:
