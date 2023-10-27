@@ -5,11 +5,11 @@ matplotlib==3.6.1
 pypng==0.0.21
 rfcx==0.2.6
 scikit-maad==1.3.12
-soundfile==0.11.0
+soundfile==0.12.1
 
 # For batch legacy
 mysql-connector-python==8.1.0
-boto==2.49.0
+boto3==1.28.71
 
 # Dev
 pytest==7.2.0

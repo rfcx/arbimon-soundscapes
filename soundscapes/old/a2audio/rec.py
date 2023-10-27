@@ -5,7 +5,7 @@ import traceback
 import urllib.request, urllib.error, urllib.parse
 import http.client
 import subprocess
-import boto.s3.connection
+import boto3
 import numpy as np
 import warnings
 warnings.filterwarnings( "ignore", module = "matplotlib\..*" )
@@ -139,17 +139,13 @@ class Rec:
         self.status = 'HasAudioData'
 
     def getAudioFromUri(self):
-        c = boto.s3.connection.S3Connection(config['s3_access_key_id'], config['s3_secret_access_key'], port=config['s3_port'], debug=2)
-        b = c.get_bucket(self.bucket, validate=True)
-        k = b.get_key(self.uri)
-        if k is None:
-            if self.logs:
-                print("missing file. {} {}".format(
-                    self.bucket, self.uri))
+        s3 = boto3.resource('s3', aws_access_key_id=config['s3_access_key_id'], aws_secret_access_key=config['s3_secret_access_key'])
+        b = s3.Bucket(self.bucket)
+        try:
+            b.download_file(self.uri, self.localfilename)
+        except:
             print(("missing file. {} {}".format(self.bucket, self.uri)))
             return False
-
-        k.get_contents_to_filename(self.localfilename)
         return True
 
     def getAudioFromLegacyUri(self, retries=6):

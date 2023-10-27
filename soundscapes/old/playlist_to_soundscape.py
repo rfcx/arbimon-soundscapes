@@ -9,9 +9,9 @@ import multiprocessing
 import subprocess
 import json
 import tempfile
+import boto3
 from joblib import Parallel, delayed
 from datetime import datetime
-from boto.s3.connection import S3Connection
 from .a2audio.rec import Rec
 from .a2pyutils import palette
 from .indices import indices
@@ -28,34 +28,33 @@ config = {
 currDir = os.path.dirname(os.path.abspath(__file__))
 
 # aggregation is 'time_of_day' (see soundscape.py for options)
-def get_norm_vector(db, aggregation):
-    aggregation = soundscape.aggregations[aggregation]
+def get_norm_vector(db, aggregation, playlist_id):
     norm_vector = {}
     date_parts = [
         'DATE_FORMAT(R.datetime, "{}")'.format(dp)
         for dp in aggregation['date']
     ]
     with contextlib.closing(db.cursor()) as cursor:
-            cursor.execute('''
-                SELECT {} , COUNT(*) as count
-                FROM `playlist_recordings` PR
-                JOIN `recordings` R ON R.recording_id = PR.recording_id
-                WHERE PR.playlist_id = {}
-                GROUP BY {}
-            '''.format(
-                ', '.join([
-                    "{} as dp_{}".format(d, i)
-                    for i, d in enumerate(date_parts)
-                ]),
-                int(sc_data['playlist_id']),
-                ', '.join(date_parts)
-            ))
-            for row in cursor:
-                idx = sum([
-                    int(row['dp_{}'.format(i)]) * p
-                    for i, p in enumerate(aggregation['projection'])
-                ])
-                norm_vector[idx] = row['count']
+        cursor.execute('''
+            SELECT {} , COUNT(*) as count
+            FROM `playlist_recordings` PR
+            JOIN `recordings` R ON R.recording_id = PR.recording_id
+            WHERE PR.playlist_id = {}
+            GROUP BY {}
+        '''.format(
+            ', '.join([
+                "{} as dp_{}".format(d, i)
+                for i, d in enumerate(date_parts)
+            ]),
+            int(playlist_id),
+            ', '.join(date_parts)
+        ))
+        for row in [dict(zip(cursor.column_names, r)) for r in cursor.fetchall()]:
+            idx = sum([
+                int(row['dp_{}'.format(i)]) * p
+                for i, p in enumerate(aggregation['projection'])
+            ])
+            norm_vector[idx] = row['count']
     return norm_vector
 
 def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
@@ -254,6 +253,7 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
                     db1.close()
                     return None
                 elif stdout:
+                    print('got stdout:', stdout)
                     if 'err' in str(stdout):
                         print('err in stdout')
                         print((
@@ -327,10 +327,10 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
     #finish function
     #------------------------------- PARALLEL PROCESSING OF RECORDINGS --------------------------------------------------------------------------------------------------------------------
         start_time_all = time.time()
-        # resultsParallel = Parallel(n_jobs=num_cores)(
-        #     delayed(processRec)(recordingi, config) for recordingi in recsToProcess
-        # )
-        resultsParallel = [processRec(recordingi, config) for recordingi in recsToProcess]
+        resultsParallel = Parallel(n_jobs=num_cores)(
+            delayed(processRec)(recordingi, config) for recordingi in recsToProcess
+        )
+        # resultsParallel = [processRec(recordingi, config) for recordingi in recsToProcess] # Sequential for testing
 
         #----------------------------END PARALLEL --------------------------------------------------------------------------------------------------------------------
         # process result
@@ -356,8 +356,8 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
                             `progress` = `progress` + 1 where `job_id` = '+str(job_id))
                         db.commit()
                 except Exception as e:
-                    print(str(e))
-                    print('Fatal error: cannot connect to database.')
+                    print('ERROR', str(e))
+                    print('ERROR: cannot connect to database')
                     db.close()
                     quit()
 
@@ -430,86 +430,61 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
                     db.commit()
                     scpId = cursor.lastrowid
             except Exception as e:
-                print(str(e))
+                print('WARN', 'progress increment', str(e))
+
+            print('inserted soundscape into database')
+            soundscapeId = scpId
+            start_time_all = time.time()
+
+            norm_vector = get_norm_vector(db, aggregation, playlist_id) if normalized else None
+            if norm_vector is not None:
+                scp.norm_vector = norm_vector
+
+            scp.write_image(working_folder + imgout, palette.get_palette())
             try:
-                print('inserted soundscape into database')
-                soundscapeId = scpId
-                start_time_all = time.time()
+                with contextlib.closing(db.cursor()) as cursor:
+                    cursor.execute('update `jobs` set `state`="processing", \
+                        `progress` = `progress` + 1 where `job_id` = '+str(job_id))
+                    db.commit()
+            except Exception as e:
+                print(str(e))
+            print("writing image:" + str(time.time() - start_time_all))
+            uriBase = 'project_'+str(pid)+'/soundscapes/'+str(soundscapeId)
+            imageUri = uriBase + '/image.png'
+            indexUri = uriBase + '/index.scidx'
+            peaknumbersUri = uriBase + '/peaknumbers.json'
+            hUri = uriBase + '/h.json'
+            aciUri = uriBase + '/aci.json'
 
-                scData = {'time_of_day'}
-                norm_vector = get_norm_vector(db1, scData) if normalized else None
-
-                if norm_vector is not None:
-                    scp.norm_vector = norm_vector
-
-                scp.write_image(working_folder + imgout, palette.get_palette())
-                try:
-                    with contextlib.closing(db.cursor()) as cursor:
-                        cursor.execute('update `jobs` set `state`="processing", \
-                            `progress` = `progress` + 1 where `job_id` = '+str(job_id))
-                        db.commit()
-                except Exception as e:
-                    print(str(e))
-                print("writing image:" + str(time.time() - start_time_all))
-                uriBase = 'project_'+str(pid)+'/soundscapes/'+str(soundscapeId)
-                imageUri = uriBase + '/image.png'
-                indexUri = uriBase + '/index.scidx'
-                peaknumbersUri = uriBase + '/peaknumbers.json'
-                hUri = uriBase + '/h.json'
-                aciUri = uriBase + '/aci.json'
-
+            try:
                 print('trying connection to bucket')
                 bucket = None
-                conn = S3Connection(config['s3_access_key_id'], config['s3_secret_access_key'])
-                try:
-                    print('connecting to ' + config['s3_legacy_bucket_name'])
-                    bucket = conn.get_bucket(config['s3_legacy_bucket_name'])
-                except Exception as ex:
-                    print('Fatal error: cannot connect to bucket '+ex.error_message)
-                    with contextlib.closing(db.cursor()) as cursor:
-                        cursor.execute('UPDATE `jobs` \
-                        SET `completed` = -1, `state`="error", \
-                        `remarks` = \'Error: connecting to bucket.\' \
-                        WHERE `job_id` = '+str(job_id))
-                        db.commit()
-                    db.close()
-                    quit()
-                print('connect to bucket successful')
-                k = bucket.new_key(imageUri)
-                k.set_contents_from_filename(working_folder+imgout)
-                k.set_acl('public-read')
+                s3 = boto3.resource('s3', aws_access_key_id=config['s3_access_key_id'], aws_secret_access_key=config['s3_secret_access_key'])
+                bucket = s3.Bucket(config['s3_legacy_bucket_name'])
+                bucket.upload_file(working_folder+imgout, imageUri, ExtraArgs={'ACL': 'public-read'})
                 try:
                     with contextlib.closing(db.cursor()) as cursor:
                         cursor.execute('update `jobs` set `state`="processing", \
                             `progress` = `progress` + 1 where `job_id` = '+str(job_id))
                         db.commit()
                 except Exception as e:
-                    print(str(e))
-                k = bucket.new_key(indexUri)
-                k.set_contents_from_filename(working_folder+scidxout)
-                k.set_acl('public-read')
+                    print('WARN', 'progress increment', str(e))
+                bucket.upload_file(working_folder+scidxout, indexUri, ExtraArgs={'ACL': 'public-read'})
                 with contextlib.closing(db.cursor()) as cursor:
                     cursor.execute("update `soundscapes` set `uri` = '"+imageUri+"' \
                         where  `soundscape_id` = "+str(soundscapeId))
                     db.commit()
 
-                k = bucket.new_key(peaknumbersUri)
-                k.set_contents_from_filename(peaknFile+'.json')
-                k.set_acl('public-read')
-
-                k = bucket.new_key(hUri)
-                k.set_contents_from_filename(hFile+'.json')
-                k.set_acl('public-read')
-
-                k = bucket.new_key(aciUri)
-                k.set_contents_from_filename(aciFile+'.json')
-                k.set_acl('public-read')
-            except:
+                bucket.upload_file(peaknFile+'.json', peaknumbersUri, ExtraArgs={'ACL': 'public-read'})
+                bucket.upload_file(hFile+'.json', hUri, ExtraArgs={'ACL': 'public-read'})
+                bucket.upload_file(aciFile+'.json', aciUri, ExtraArgs={'ACL': 'public-read'})
+            except Exception as e:
+                print('ERROR', str(e))
                 with contextlib.closing(db.cursor()) as cursor:
                     cursor.execute('delete from soundscapes where soundscape_id ='+str(scpId))
                     db.commit()
                     cursor.execute('update `jobs` set `state`="error", \
-                        `completed` = -1,`remarks` = \'Error: No results found.\' \
+                        `completed` = -1,`remarks` = \'Error: Failed writing soundscape files.\' \
                         where `job_id` = '+str(job_id))
                     db.commit()
         else:
@@ -526,7 +501,7 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
                         `progress` = `progress` + 4 where `job_id` = '+str(job_id))
                     db.commit()
             except Exception as e:
-                print(str(e))
+                print('WARN', 'progress increment', str(e))
 
         try:
             with contextlib.closing(db.cursor()) as cursor:
@@ -534,7 +509,7 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
                     `progress` = `progress` + 1 where `job_id` = '+str(job_id))
                 db.commit()
         except Exception as e:
-            print(str(e))
+            print('WARN', 'progress completion', str(e))
         print('closing database')
 
         db.close()

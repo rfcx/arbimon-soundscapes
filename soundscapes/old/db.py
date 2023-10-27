@@ -118,7 +118,7 @@ def create_job(conn, playlist_id, user_id, aggregation = 'time_of_day', bin_size
     cursor = conn.cursor()
 
     # TODO check for none
-    cursor.execute('select soundscape_aggregation_type_id from soundscape_aggregation_types where identifier = %', (aggregation,))
+    cursor.execute('select soundscape_aggregation_type_id from soundscape_aggregation_types where identifier = %s', (aggregation,))
     (aggregation_type_id, ) = cursor.fetchone()
 
     # TODO check for none
