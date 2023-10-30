@@ -48,10 +48,14 @@ shell: build
 		$(CMD)
 
 serve-up:
-	@echo "\n${BLUE}Running docker compose up..."
+	@echo "\n${BLUE}Running docker compose up...${NC}\n"
+	@docker compose up -d --wait
+	@echo "\n${BLUE}Seeding s3mock... (might take a few minutes)${NC}\n"
+	@sleep 3
+	@docker compose run --rm -v ${PWD}/store/mock-data/core-bucket:/up -v ${PWD}/store/upload.sh:/upload.sh -e UPLOAD_FOLDER=/up app bash /upload.sh
+	@echo "\n${BLUE}Dev environment ready!"
 	@echo "    use \`make serve-run SCRIPT=batch_legacy\` to run"
 	@echo "    use \`make serve-down\` when you are finished${NC}\n"
-	@docker compose up -d
 
 serve-run:
 	@echo "\n${BLUE}Launching $(SCRIPT) in docker...${NC}\n"
