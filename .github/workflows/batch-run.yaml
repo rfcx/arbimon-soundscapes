@@ -102,9 +102,9 @@ jobs:
                       value: '${{ inputs.soundscape_threshold }}'
                   resources:
                     requests:
-                      ephemeral-storage: '20Gi'
+                      ephemeral-storage: '10Gi'
                 restartPolicy: Never
-            backoffLimit: 0
+            backoffLimit: 10
           EOF
           cat job.yaml
 
