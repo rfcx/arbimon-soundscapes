@@ -2,7 +2,7 @@ import argparse
 from .config.logs import get_logger
 from .config.read_config import read_config
 from .old.playlist_to_soundscape import playlist_to_soundscape
-from .old.db import connect, get_automated_user, get_sites, create_playlist, create_job, find_project
+from .old.db import connect, get_automated_user, get_sites, create_playlist, create_job, find_project, soundscape_exists
 
 log = get_logger()
 
@@ -33,7 +33,11 @@ def main(config):
             print('- No recordings for', year, '(skipping job)')
             continue
         playlist_id, playlist_name = result
-        print('- Created playlist', playlist_id, playlist_name)
+        print('- Found or created playlist', playlist_id, playlist_name)
+
+        if soundscape_exists(conn, playlist_id, soundscape_aggregation, soundscape_bin_size, soundscape_threshold, soundscape_normalize):
+            print('- Skipping job (soundscape already exists)')
+            continue
 
         job_id = create_job(conn, playlist_id, user_id, soundscape_aggregation, soundscape_bin_size, soundscape_threshold, soundscape_normalize)
         print('- Created and initialized job', job_id)

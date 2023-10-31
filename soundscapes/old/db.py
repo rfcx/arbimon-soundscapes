@@ -1,5 +1,8 @@
+import base64
+import hashlib
 import os
 import mysql.connector
+from typing import Union
 
 config = {
     'db_host': os.getenv('DB_HOST'),
@@ -53,6 +56,19 @@ def find_project(conn, url_or_id):
     cursor.close()
     return None
 
+def find_aggregation(conn, identifier) -> Union[int,None]:
+    cursor = conn.cursor()
+
+    # Get aggregation id from identifier
+    cursor.execute('select soundscape_aggregation_type_id from soundscape_aggregation_types where identifier = %s', (identifier,))
+    row = cursor.fetchone()
+    if row is None:
+        cursor.close()
+        return None
+    
+    cursor.close()
+    (aggregation_type_id, ) = row
+    return aggregation_type_id
 
 def get_sites(conn, project_id, query = None):
     cursor = conn.cursor()
@@ -114,16 +130,26 @@ def create_playlist(conn, project_id, site_id, site_name, year):
     cursor.close()
     return playlist_id, playlist_name
 
-def create_job(conn, playlist_id, user_id, aggregation = 'time_of_day', bin_size = 344, threshold = 0.05, normalize = 1):
+def create_job(conn, playlist_id, user_id, aggregation = 'time_of_day', bin_size = 344, threshold = 0.05, normalize = 1) -> Union[int,None]:
     cursor = conn.cursor()
 
-    # TODO check for none
-    cursor.execute('select soundscape_aggregation_type_id from soundscape_aggregation_types where identifier = %s', (aggregation,))
-    (aggregation_type_id, ) = cursor.fetchone()
+    # Get aggregation id from identifier
+    aggregation_type_id = find_aggregation(conn, aggregation)
+    if aggregation_type_id is None:
+        cursor.close()
+        return None
 
-    # TODO check for none
+    # Get the playlist
     cursor.execute('select project_id, name, total_recordings from playlists where playlist_id = %s', (playlist_id, ))
-    (project_id, playlist_name, total_recordings) = cursor.fetchone()
+    row = cursor.fetchone()
+    if row is None:
+        cursor.close()
+        return None
+    (project_id, playlist_name, total_recordings) = row
+
+    # Additional parameters
+    max_hertz = 24000 # TODO compute this from the recordings
+    # job_name_suffix = soundscape_hash(playlist_id, aggregation_type_id, bin_size, threshold, normalize) # TODO make job name unique
 
     cursor.execute(
         '''insert into jobs (job_type_id, date_created, last_update, project_id, user_id, state, progress_steps, remarks, uri, hidden) 
@@ -134,9 +160,27 @@ def create_job(conn, playlist_id, user_id, aggregation = 'time_of_day', bin_size
 
     cursor.execute(
         '''insert into job_params_soundscape (job_id, playlist_id, name, max_hertz, soundscape_aggregation_type_id, bin_size, threshold, normalize) 
-        values (%s, %s, %s, 24000, %s, %s, %s, %s)''',
-        (job_id, playlist_id, playlist_name, aggregation_type_id, bin_size, threshold, normalize))
+        values (%s, %s, %s, %s, %s, %s, %s, %s)''',
+        (job_id, playlist_id, playlist_name, max_hertz, aggregation_type_id, bin_size, threshold, normalize))
     conn.commit()
-    cursor = conn.cursor()
+    cursor.close()
 
     return job_id
+
+def soundscape_exists(conn, playlist_id, aggregation, bin_size, threshold, normalize) -> bool:
+    aggregation_type_id = find_aggregation(conn, aggregation)
+    if aggregation_type_id is None:
+        return False
+    
+    # Find a matching soundscape
+    cursor = conn.cursor()
+    cursor.execute('''select soundscape_id from soundscapes where playlist_id = %s and soundscape_aggregation_type_id = %s and bin_size = %s and abs(threshold - %s) < 0.001 and normalized = %s limit 1''',
+                   (playlist_id, aggregation_type_id, bin_size, threshold, normalize))
+    row = cursor.fetchone()
+    cursor.close()
+    return row is not None
+
+def soundscape_hash(playlist_id: int, aggregation_id: int, bin_size: int, threshold: float, normalize: int) -> str:
+    plain = f'{playlist_id}_{aggregation_id}_{bin_size}_{threshold}_{normalize}'
+    d = hashlib.md5(plain).digest()
+    return str(base64.b64encode(d))[:5]
