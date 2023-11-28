@@ -83,13 +83,8 @@ class Rec:
         self.original = []
         tempfilename = uri.split('/')
         self.filename = tempfilename[len(tempfilename) - 1]
-        self.seed = "%.16f" % ((sys.maxsize * np.random.rand(1)))
-        self.localfilename = self.localFiles + self.filename.replace(
-            " ", "_") + self.seed
-        while os.path.isfile(self.localfilename):
-            self.seed = "%.16f" % ((sys.maxsize * np.random.rand(1)))
-            self.localfilename = self.localFiles + self.filename.replace(
-                " ", "_") + self.seed
+        self.seed = "%d" % (sys.maxsize * np.random.rand(1))
+        self.localfilename = self.localFiles + self.seed + '_' + self.filename.replace(' ', '_')
         if self.logs:
             print("init completed:" + str(time.time() - start_time))
             print('bucket: '+self.bucket+'\turi: '+self.uri)
@@ -204,6 +199,7 @@ class Rec:
         if file_extension == 'opus':
             process = subprocess.Popen(['opusdec', self.localfilename, self.localfilename+'.wav'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
             out, err = process.communicate()
+            os.remove(self.localfilename)
             self.localfilename = self.localfilename+'.wav'
             print('converted opus file: '+str(self.filename))
         elif file_extension == 'flac':
@@ -211,6 +207,7 @@ class Rec:
             proc = subprocess.run(command, capture_output=True, text=True)
             # print('sox stdout:', proc.stdout)
             # print('sox stderr:', proc.stderr)
+            os.remove(self.localfilename)
             self.localfilename = self.localfilename+'.wav'
             print('converted flac file: '+str(self.filename))
 
@@ -239,8 +236,7 @@ class Rec:
             if os.path.isfile(self.localfilename):
                 os.remove(self.localfilename)
             if self.logs:
-                print("remove temporary file:" +
-                                str(time.time() - start_time))
+                print("remove temporary file:", str(time.time() - start_time))
         return True
 
     def appendToOriginal(self, i):
