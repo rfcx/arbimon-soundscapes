@@ -103,7 +103,6 @@ jobs:
                   resources:
                     requests:
                       cpu: '1'
-                      ephemeral-storage: '10Gi'
                 restartPolicy: Never
             backoffLimit: 10
           EOF
