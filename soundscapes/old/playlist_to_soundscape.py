@@ -66,13 +66,13 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
         shutil.rmtree(working_folder)
     os.makedirs(working_folder)
 
-    print('trying database connection')
+    print('main: log: trying database connection')
     try:
         db = connect()
     except:
-        print('Fatal error: cannot connect to database.')
+        print('main: failed: cannot connect to database.')
         quit()
-    print('database connection successful')
+    print('main: log: database connection successful')
 
 
     with contextlib.closing(db.cursor()) as cursor:
@@ -92,7 +92,7 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
         job = cursor.fetchone()
 
     if not job:
-        print("Soundscape job #{0} not found".format(job_id))
+        print("main: failed: soundscape job #{0} not found".format(job_id))
         sys.exit(-1)
 
     (
@@ -109,14 +109,14 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
     aggregation = soundscape.aggregations.get(agr_ident)
 
     if not aggregation:
-        print('Wrong agregation')
+        print('main: failed: wrong agregation')
         sys.exit(-1)
 
     imgout = 'image.png'
     scidxout = 'index.scidx'
 
     if bin_size < 0:
-        print('Bin size must be a positive number. Input was:' + str(bin_size))
+        print('main: failed: bin size must be a positive number. Input was:' + str(bin_size))
         sys.exit(-1)
 
     try:
@@ -127,7 +127,7 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
             JOIN `recordings` r ON pr.`recording_id` = r.`recording_id` \
             WHERE `playlist_id` = " + str(playlist_id))
 
-        print('retrieving playlist recordings list')
+        print('main: log: retrieving playlist recordings list')
         totalRecs = 0
         recsToProcess = []
         with contextlib.closing(db.cursor()) as cursor:
@@ -142,7 +142,7 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
                     "date": row[2],
                     "legacy": row[3]
                 })
-            print('playlist recordings list retrieved - total recs =', totalRecs)
+            print('main: log: playlist recordings list retrieved', totalRecs)
         try:
             with contextlib.closing(db.cursor()) as cursor:
                 cursor.execute('update `jobs` set state="processing", `progress` = 1,\
@@ -152,7 +152,7 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
         except Exception as e:
             print(str(e))
         if len(recsToProcess) < 1:
-            print('Fatal error: Invalid playlist or no recordings on playlist')
+            print('main: failed: invalid playlist or no recordings on playlist')
             with contextlib.closing(db.cursor()) as cursor:
                 cursor.execute('update `jobs` set `state`="error", \
                     `completed` = -1,`remarks` = \'Error: Invalid playlist \
@@ -160,7 +160,7 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
                 db.commit()
             sys.exit(-1)
 
-        print('init indices calculation with aggregation: '+str(aggregation))
+        print('main: log: init indices calculation with aggregation: '+str(aggregation))
 
         if agr_ident=='year':
             agg_range = [int(i['date'].split('-')[0]) for i in recsToProcess]
@@ -170,61 +170,48 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
         hIndex = indices.Indices(aggregation)
         aciIndex = indices.Indices(aggregation)
 
-        print("start parallel... ")
+        print("main: log: start parallel processing")
 
         #------------------------------- FUNCTION THAT PROCESS ONE RECORDING --------------------------------------------------------------------------------------------------------------------
 
-        def processRec(rec, config):
-            id = rec['id']
-            print((
-                '------------------START WORKER THREAD LOG (id:'+str(id) +
-                ')------------------'
-            ))
+        def processRec(rec, config, rec_index):
+            log_prefix = 'worker:' + str(rec['id']) + ':'
+            print(log_prefix, 'started (count:' + str(rec_index) + ')')
             try:
                 db1 = connect()
             except:
-                print('worker id'+str(id)+' log: worker cannot connect \to db')
+                print(log_prefix, 'failed: cannot connect to db')
                 return None
-            print('worker id'+str(id)+' log: connected to db')
-            try:
-                with contextlib.closing(db1.cursor()) as cursor:
-                    cursor.execute('update `jobs` set `state`="processing", \
-                        `progress` = `progress` + 1 where `job_id` = '+str(job_id))
-                    db1.commit()
-            except Exception as e:
-                print(str(e))
+            if rec_index % 10 == 0: # Reduce load on db, give less accurate progress
+                start_time_rec = time.time()
+                try:
+                    with contextlib.closing(db1.cursor()) as cursor:
+                        cursor.execute('update jobs set state="processing", progress = progress + 10 where job_id = '+str(job_id))
+                        db1.commit()
+                except Exception as e:
+                    print(str(e))
+                print(log_prefix, 'timing: report progress:', str(int(1000 * (time.time()-start_time_rec))) + 'ms')
             results = []
             date = datetime.strptime(rec['date'], '%Y-%m-%d %H:%M:%S')
 
             uri = rec['uri']
-            print('worker id'+str(id)+' log: rec uri:'+uri)
+            print(log_prefix, 'log: download uri:', uri)
             start_time_rec = time.time()
             recobject = Rec(str(uri),
                             str(working_folder),
                             config['s3_legacy_bucket_name'] if rec['legacy'] else config['s3_bucket_name'],
-                            True,
+                            False,
                             False,
                             legacy=rec['legacy'])
+            print(log_prefix, 'timing: download ' + str(int(1000 * (time.time()-start_time_rec))) + 'ms')
 
-            print((
-                'worker id' + str(id) + ' log: rec from uri' +
-                str(time.time()-start_time_rec)
-            ))
             if recobject .status == 'HasAudioData':
                 localFile = recobject.getLocalFileLocation()
-                print('worker id'+str(id)+' log: rec HasAudioData')
                 if localFile is None:
-                    print((
-                        '------------------END WORKER THREAD LOG (id:' + str(id) +
-                        ')------------------'
-                    ))
+                    print(log_prefix, 'failed: localFile is None')
                     db1.close()
                     return None
-                print((
-                    'worker id' + str(id) + ' log: cmd: /usr/bin/Rscript ' +
-                    currDir + '/fpeaks.R' + ' ' + localFile + ' ' +
-                    str(threshold) + ' ' + str(bin_size) + ' ' + str(frequency)
-                ))
+
                 start_time_rec = time.time()
                 proc = subprocess.Popen([
                     '/usr/bin/Rscript', currDir+'/fpeaks.R',
@@ -235,31 +222,14 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
                 ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 stdout, stderr = proc.communicate()
                 if stderr and 'LC_TIME' not in stderr and 'OpenBLAS' not in stderr:
-                    print((
-                        'worker id' + str(id) + ' log: fpeaks.R err:' +
-                        str(time.time()-start_time_rec) + " stdout: " + stdout +
-                        " stderr: "+stderr
-                    ))
+                    print(log_prefix, 'failed: fpeaks.R: stderr: ' + stderr)
                     os.remove(localFile)
-                    print((
-                        'worker id' + str(id) + ' log:Error in recording:' + uri))
-                    with contextlib.closing(db1.cursor()) as cursor:
-                        cursor.execute(
-                            'INSERT INTO `recordings_errors`(`recording_id`,`job_id`) \
-                            VALUES ('+str(id)+','+str(job_id)+') ')
-                        db1.commit()
-                    print((
-                        '------------------END WORKER THREAD LOG (id:' + str(id) +
-                        ')------------------'))
                     db1.close()
                     return None
                 elif stdout:
-                    print('got stdout:', stdout)
                     if 'err' in str(stdout):
-                        print('err in stdout')
-                        print((
-                            '------------------END WORKER THREAD LOG (id:' +
-                            str(id) + ')------------------'))
+                        print(log_prefix, 'failed: fpeaks.R: stdout: ' + stdout)
+                        os.remove(localFile)
                         db1.close()
                         return None
                     ff=json.loads(stdout)
@@ -294,50 +264,36 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
                     else:
                         acivalue=-1
 
-                    proc = subprocess.Popen([
-                    '/usr/bin/soxi', '-r',
-                    localFile
-                    ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    proc = subprocess.Popen(['/usr/bin/soxi', '-r', localFile], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                     stdout, stderr = proc.communicate()
-
                     recSampleRate = None
                     if stdout and 'err' not in str(stdout):
                         recSampleRate = float(stdout)
                     recMaxHertz = float(recSampleRate)/2.0
+                    
                     os.remove(localFile)
-                    results = {"date": date, "id": id, "freqs": freqs , "amps":amps , "h":hvalue , "aci" :acivalue,"recMaxHertz":recMaxHertz}
-                    print((
-                        '------------------END WORKER THREAD LOG (id:' + str(id) +
-                        ')------------------'
-                    ))
+                    results = {"date": date, "id": rec['id'], "freqs": freqs, "amps": amps, "h": hvalue, "aci": acivalue, "recMaxHertz": recMaxHertz}
                     db1.close()
                     return results
             else:
-                print((
-                    'worker id' + str(id) + ' log: Invalid recording:' + uri))
-                with contextlib.closing(db1.cursor()) as cursor:
-                    cursor.execute('INSERT INTO `recordings_errors`(`recording_id`, \
-                        `job_id`) VALUES ('+str(id)+','+str(job_id)+') ')
-                    db1.commit()
-                print((
-                    '------------------END WORKER THREAD LOG (id:' + str(id) +
-                    ')------------------'
-                ))
+                print(log_prefix, 'failed: invalid recording:' + uri)
                 db1.close()
                 return None
-    #finish function
-    #------------------------------- PARALLEL PROCESSING OF RECORDINGS --------------------------------------------------------------------------------------------------------------------
+
+
+        # PARALLEL PROCESSING OF RECORDINGS
         start_time_all = time.time()
         resultsParallel = Parallel(n_jobs=num_cores)(
-            delayed(processRec)(recordingi, config) for recordingi in recsToProcess
+            delayed(processRec)(recordingi, config, i) for i, recordingi in enumerate(recsToProcess)
         )
-        # resultsParallel = [processRec(recordingi, config) for recordingi in recsToProcess] # Sequential for testing
+        # resultsParallel = [processRec(recordingi, config, i) for i, recordingi in enumerate(recsToProcess)] # Sequential for testing
+        # END PARALLEL
+        
 
-        #----------------------------END PARALLEL --------------------------------------------------------------------------------------------------------------------
         # process result
-        print("all recs parallel ---" + str(time.time() - start_time_all))
+        print('main: timing: process all recordings: ' + str(int(1000 * (time.time()-start_time_all))) + 'ms')
         if len(resultsParallel) > 0:
-            print('processing recordings results: '+str(len(resultsParallel)))
+            print('main: log: processing recordings results: ' + str(len(resultsParallel)))
             try:
                 with contextlib.closing(db.cursor()) as cursor:
                     cursor.execute('update `jobs` set `state`="processing", \
@@ -364,12 +320,12 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
 
             max_hertz = 22050
             for result in resultsParallel:
-                if result is not None:
-                    if   max_hertz < result['recMaxHertz']:
-                        max_hertz = result['recMaxHertz']
+                if result is not None and max_hertz < result['recMaxHertz']:
+                    max_hertz = result['recMaxHertz']
             max_bins = int(max_hertz / bin_size)
-            print('max_bins '+str(max_bins))
+            print('main: log: max_bins '+str(max_bins))
             scp = soundscape.Soundscape(aggregation, bin_size, max_bins, amplitude_th=threshold, threshold_type=threshold_type)
+            
             start_time_all = time.time()
             for result in resultsParallel:
                 if result is not None:
@@ -381,13 +337,11 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
                         hIndex.insert_value(result['date'] ,result['h'],result['id'])
                     if result['aci'] is not None:
                         aciIndex.insert_value(result['date'] ,result['aci'],result['id'])
-
-            print("inserting peaks:" + str(time.time() - start_time_all))
+            print("main: timing: inserting peaks:" + str(int(1000 * (time.time()-start_time_all))) + 'ms')
+            
             start_time_all = time.time()
-
             scp.write_index(working_folder+scidxout)
-
-            print("writing indices:" + str(time.time() - start_time_all))
+            print("main: timing: writing indices:" + str(int(1000 * (time.time()-start_time_all))) + 'ms')
 
             peaknFile = working_folder+'peaknumbers'
             peaknumbers.write_index_aggregation_json(peaknFile+'.json')
@@ -433,14 +387,12 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
             except Exception as e:
                 print('WARN', 'progress increment', str(e))
 
-            print('inserted soundscape into database')
+            print('main: log: inserted soundscape into database')
             soundscapeId = scpId
             start_time_all = time.time()
-
             norm_vector = get_norm_vector(db, aggregation, playlist_id) if normalized else None
             if norm_vector is not None:
                 scp.norm_vector = norm_vector
-
             scp.write_image(working_folder + imgout, palette.get_palette())
             try:
                 with contextlib.closing(db.cursor()) as cursor:
@@ -449,7 +401,8 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
                     db.commit()
             except Exception as e:
                 print(str(e))
-            print("writing image:" + str(time.time() - start_time_all))
+            print("main: timing: writing image:" + str(int(1000 * (time.time()-start_time_all))) + 'ms')
+
             uriBase = 'project_'+str(pid)+'/soundscapes/'+str(soundscapeId)
             imageUri = uriBase + '/image.png'
             indexUri = uriBase + '/index.scidx'
@@ -458,7 +411,7 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
             aciUri = uriBase + '/aci.json'
 
             try:
-                print('trying connection to bucket')
+                print('main: log: trying connection to bucket')
                 bucket = None
                 s3 = boto3.resource('s3', 
                                     aws_access_key_id=config['s3_access_key_id'], 
@@ -492,21 +445,12 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
                         where `job_id` = '+str(job_id))
                     db.commit()
         else:
-            print('no results from playlist id:'+playlist_id)
+            print('main: failed: no results from playlist id:'+playlist_id)
             with contextlib.closing(db.cursor()) as cursor:
                 cursor.execute('update `jobs` set `state`="error", \
                     `completed` = -1,`remarks` = \'Error: No results found.\' \
                     where `job_id` = '+str(job_id))
                 db.commit()
-            print('no results from playlist id:'+playlist_id)
-            try:
-                with contextlib.closing(db.cursor()) as cursor:
-                    cursor.execute('update `jobs` set \
-                        `progress` = `progress` + 4 where `job_id` = '+str(job_id))
-                    db.commit()
-            except Exception as e:
-                print('WARN', 'progress increment', str(e))
-
         try:
             with contextlib.closing(db.cursor()) as cursor:
                 cursor.execute('update `jobs` set `state`="completed", `completed`=1, \
@@ -514,12 +458,12 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
                 db.commit()
         except Exception as e:
             print('WARN', 'progress completion', str(e))
-        print('closing database')
 
+        print('main: log: closing database')
         db.close()
-        print('removing temporary folder')
-
+        print('main: log: removing temporary folder')
         shutil.rmtree(working_folder)
+
     except Exception as e:
         import traceback
         errmsg = traceback.format_exc()
@@ -534,7 +478,7 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
             db.commit()
         shutil.rmtree(working_folder)
         db.close()
-    print('ended script')
+    print('main: log: ended script')
 
 
 if __name__ == 'main':

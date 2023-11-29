@@ -201,7 +201,8 @@ class Rec:
             out, err = process.communicate()
             os.remove(self.localfilename)
             self.localfilename = self.localfilename+'.wav'
-            print('converted opus file: '+str(self.filename))
+            if self.logs:
+                print('converted opus file: '+str(self.filename))
         elif file_extension == 'flac':
             command = ['/usr/bin/sox', self.localfilename, self.localfilename+'.wav']
             proc = subprocess.run(command, capture_output=True, text=True)
@@ -209,7 +210,8 @@ class Rec:
             # print('sox stderr:', proc.stderr)
             os.remove(self.localfilename)
             self.localfilename = self.localfilename+'.wav'
-            print('converted flac file: '+str(self.filename))
+            if self.logs:
+                print('converted flac file: '+str(self.filename))
 
         try:
             s, fs = sf.read(self.localfilename)
