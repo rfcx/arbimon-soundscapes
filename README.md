@@ -35,7 +35,7 @@ make serve-run SCRIPT=batch_legacy
 Inspect the results in mock store.
 
 ```bash
-make serve-run SCRIPT=s3_get project_1907
+make serve-run SCRIPT="s3_get project_1907"
 ```
 
 When you have finished

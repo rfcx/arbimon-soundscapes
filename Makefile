@@ -49,7 +49,7 @@ shell: build
 
 serve-up:
 	@echo "\n${BLUE}Running docker compose up...${NC}\n"
-	@docker compose up -d --wait
+	@docker compose up -d --wait --build
 	@echo "\n${BLUE}Seeding s3mock... (might take a few minutes)${NC}\n"
 	@sleep 3
 	@docker compose run --rm -v ${PWD}/store/mock-data/core-bucket:/up -v ${PWD}/store/upload.sh:/upload.sh -e UPLOAD_FOLDER=/up app bash /upload.sh
@@ -63,7 +63,7 @@ serve-run:
 
 serve-down:
 	@echo "\n${BLUE}Running docker compose down...${NC}\n"
-	@docker compose down
+	@docker compose down -v
 
 version:
 	@echo $(TAG)
