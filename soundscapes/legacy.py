@@ -19,6 +19,9 @@ def main(config):
 
     job_id = create_job(conn, playlist_id, user_id, soundscape_aggregation, soundscape_bin_size, soundscape_threshold, soundscape_normalize, job_name)
     print('- Created and initialized job', job_id)
+    if job_id is None:
+        print('Something went wrong creating the job')
+        exit(1)
 
     playlist_to_soundscape(job_id)
     print('- Completed job', job_id)
