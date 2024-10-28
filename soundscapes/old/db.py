@@ -130,7 +130,7 @@ def create_playlist(conn, project_id, site_id, site_name, year):
     cursor.close()
     return playlist_id, playlist_name
 
-def create_job(conn, playlist_id, user_id, aggregation = 'time_of_day', bin_size = 344, threshold = 0.05, normalize = 1) -> Union[int,None]:
+def create_job(conn, playlist_id, user_id, aggregation = 'time_of_day', bin_size = 344, threshold = 0.05, normalize = 1, soundscape_name = None) -> Union[int,None]:
     cursor = conn.cursor()
 
     # Get aggregation id from identifier
@@ -149,6 +149,7 @@ def create_job(conn, playlist_id, user_id, aggregation = 'time_of_day', bin_size
 
     # Additional parameters
     max_hertz = 24000 # TODO compute this from the recordings
+    job_name = playlist_name if soundscape_name is None else soundscape_name
     # job_name_suffix = soundscape_hash(playlist_id, aggregation_type_id, bin_size, threshold, normalize) # TODO make job name unique
 
     cursor.execute(
@@ -161,7 +162,7 @@ def create_job(conn, playlist_id, user_id, aggregation = 'time_of_day', bin_size
     cursor.execute(
         '''insert into job_params_soundscape (job_id, playlist_id, name, max_hertz, soundscape_aggregation_type_id, bin_size, threshold, normalize) 
         values (%s, %s, %s, %s, %s, %s, %s, %s)''',
-        (job_id, playlist_id, playlist_name, max_hertz, aggregation_type_id, bin_size, threshold, normalize))
+        (job_id, playlist_id, job_name, max_hertz, aggregation_type_id, bin_size, threshold, normalize))
     conn.commit()
     cursor.close()
 
