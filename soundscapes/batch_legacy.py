@@ -21,7 +21,7 @@ def main(config):
     soundscape_threshold = config['soundscape_threshold']
     soundscape_normalize = config['soundscape_normalize']
 
-    user_id = get_automated_user(conn)
+    user_id = config['created_by_user_id'] if config['created_by_user_id'] is not None else get_automated_user(conn)
 
     # One soundscape (and playlist) for each site
     sites = get_sites(conn, project_id, sites)

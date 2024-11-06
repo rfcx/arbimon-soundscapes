@@ -15,7 +15,7 @@ def main(config):
     soundscape_threshold = config['soundscape_threshold']
     soundscape_normalize = config['soundscape_normalize']
 
-    user_id = get_automated_user(conn)
+    user_id = config['created_by_user_id'] if config['created_by_user_id'] is not None else get_automated_user(conn)
 
     job_id = create_job(conn, playlist_id, user_id, soundscape_aggregation, soundscape_bin_size, soundscape_threshold, soundscape_normalize, job_name)
     print('- Created and initialized job', job_id)

@@ -30,5 +30,8 @@ def read_config_from_env() -> dict:
 
     if "JOB_NAME" in os.environ:
         config['job_name'] = os.getenv("JOB_NAME")
+        
+    if "CREATED_BY_USER_ID" in os.environ:
+        config['created_by_user_id'] = int(os.getenv("CREATED_BY_USER_ID")) if os.getenv("CREATED_BY_USER_ID") is not None else None
 
     return config
