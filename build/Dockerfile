@@ -2,7 +2,7 @@ FROM python:3.8-buster AS arbimon-soundscapes
 
 # Install R, sox and libsndfile/libfftw (required by seewave)
 RUN apt-get update && \
-    apt-get install -y sox r-base r-cran-devtools libsndfile-dev libfftw3-3 libfftw3-dev pkg-config
+    apt-get install -y opus-tools sox r-base r-cran-devtools libsndfile-dev libfftw3-3 libfftw3-dev pkg-config
 
 # Install seewave (R package)
 ARG SEEWAVE_VERSION=1.7.6
