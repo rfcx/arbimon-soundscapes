@@ -6,8 +6,11 @@ RUN apt-get update && \
 
 # Install seewave (R package)
 ARG SEEWAVE_VERSION=1.7.6
-RUN [[ "$SEEWAVE_VERSION" == "latest" ]] && Rscript -e 'install.packages("seewave")' || \
-    Rscript -e "require(devtools); install_version(\"seewave\", version=\"$SEEWAVE_VERSION\", repos=\"https://cran.r-project.org\")"
+RUN if [ "$SEEWAVE_VERSION" = "latest" ]; then \
+        Rscript -e 'install.packages("seewave")'; \
+    else \
+        Rscript -e "require(devtools); install.packages('https://cran.r-project.org/src/contrib/Archive/seewave/seewave_1.7.6.tar.gz', repos=NULL, type='source')"; \
+    fi
 
 # Install Python dependencies
 ADD requirements.txt /requirements.txt
