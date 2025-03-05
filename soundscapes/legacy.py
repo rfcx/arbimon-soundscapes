@@ -16,7 +16,7 @@ def main(config):
 
 if __name__ == "__main__":
     log.info('PROCESS: Initialization')
-    config = read_config()
+    config = read_config(do_validate=False)
     log.info('PROCESS: Job started')
     main(config)
     log.info('PROCESS: Job completed')

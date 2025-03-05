@@ -12,14 +12,15 @@ default_config = {
     'soundscape_normalize': 1
 }
 
-def read_config() -> dict:
+def read_config(do_validate = True) -> dict:
     env_config = read_config_from_env()
     args_config = read_config_from_args()
 
     config = {**default_config, **env_config, **args_config}
     for k, v in config.items():
         log.info(f'{k}: {v}')
-
-    validate_config(config)
+        
+    if do_validate:
+        validate_config(config)
 
     return config
