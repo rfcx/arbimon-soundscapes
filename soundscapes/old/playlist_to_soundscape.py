@@ -221,14 +221,14 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
                     str(frequency)
                 ], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
                 stdout, stderr = proc.communicate()
-                if stderr and 'LC_TIME' not in stderr and 'OpenBLAS' not in stderr:
-                    print(log_prefix, 'failed: fpeaks.R: stderr: ' + stderr)
+                if stderr and 'LC_TIME' not in str(stderr) and 'OpenBLAS' not in str(stderr):
+                    print(log_prefix, 'failed: fpeaks.R: stderr: ' + str(stderr))
                     os.remove(localFile)
                     db1.close()
                     return None
                 elif stdout:
                     if 'err' in str(stdout):
-                        print(log_prefix, 'failed: fpeaks.R: stdout: ' + stdout)
+                        print(log_prefix, 'failed: fpeaks.R: stdout: ' + str(stdout))
                         os.remove(localFile)
                         db1.close()
                         return None
@@ -274,6 +274,7 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
                     os.remove(localFile)
                     results = {"date": date, "id": rec['id'], "freqs": freqs, "amps": amps, "h": hvalue, "aci": acivalue, "recMaxHertz": recMaxHertz}
                     db1.close()
+                    print(log_prefix, 'timing: rPeak ' + str(int(1000 * (time.time()-start_time_rec))) + 'ms')
                     return results
             else:
                 print(log_prefix, 'failed: invalid recording:' + uri)
