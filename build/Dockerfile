@@ -10,12 +10,16 @@ RUN apt-get update && \
     apt-get install -y opus-tools sox r-base r-cran-devtools libsndfile-dev libfftw3-3 libfftw3-dev pkg-config
 
 # Install seewave (R package)
-ARG SEEWAVE_VERSION=2.2.3
-RUN if [ "$SEEWAVE_VERSION" = "latest" ]; then \
-        Rscript -e 'install.packages("seewave")'; \
+ARG SEEWAVE_VERSION=1.7.6
+# seewave needs the R packages fftw + tuneR; with repos=NULL (Archive
+# tarball) R will NOT auto-resolve them, so install deps from CRAN first.
+RUN Rscript -e "install.packages(c('fftw','tuneR'), repos='https://cloud.r-project.org')" && \
+    if [ "$SEEWAVE_VERSION" = "latest" ]; then \
+        Rscript -e 'install.packages("seewave", repos="https://cloud.r-project.org")'; \
     else \
-        Rscript -e "require(devtools); install_version(\"seewave\", version=\"$SEEWAVE_VERSION\", repos=\"https://cran.r-project.org\")"; \
-    fi
+        Rscript -e "install.packages(paste0('https://cran.r-project.org/src/contrib/Archive/seewave/seewave_', Sys.getenv('SEEWAVE_VERSION'), '.tar.gz'), repos=NULL, type='source')"; \
+    fi && \
+    Rscript -e "if (!requireNamespace('seewave', quietly=TRUE)) quit(status=1)"
 
 # Install Python dependencies
 ADD requirements.txt /requirements.txt
