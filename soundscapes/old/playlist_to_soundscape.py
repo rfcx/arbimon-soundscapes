@@ -353,6 +353,38 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
             aciFile = working_folder+'aci'
             aciIndex.write_index_aggregation_json(aciFile+'.json')
 
+            # rfcx-local 2026-06-09: guard against silent blank-soundscape
+            # 'completion'. If NO recording yielded usable peak data
+            # (max_count==0) the soundscape image is degenerate/blank — this
+            # is what happened when every recording 404'd from the wrong
+            # download bucket (jobs still marked 'completed'). Treat it as an
+            # error so the failure is visible and re-runnable, instead of
+            # persisting a blank image + a max_value=0 row.
+            if scp.stats.get('max_count', 0) <= 0:
+                print('main: failed: no usable recording data (max_count=0); '
+                      'all recordings missing/unreadable — not writing a blank '
+                      'soundscape')
+                # NOTE: the arbimon2 `jobs_BEFORE_UPDATE` trigger force-sets
+                # state='completed' whenever progress >= progress_steps. The
+                # per-rec progress bumps can push progress past progress_steps,
+                # so reset progress below progress_steps in the SAME UPDATE or
+                # the trigger will override our state='error' back to
+                # 'completed'. (completed=-1 is the authoritative error flag
+                # regardless, but keep state consistent for the frontend.)
+                with contextlib.closing(db.cursor()) as cursor:
+                    cursor.execute('update `jobs` set `state`="error", '
+                        '`completed` = -1, `progress` = 0, '
+                        '`remarks` = \'Error: no usable '
+                        'recording data (all recordings missing or unreadable).\' '
+                        'where `job_id` = '+str(job_id))
+                    db.commit()
+                shutil.rmtree(working_folder)
+                db.close()
+                # match the other failure paths (sys.exit(-1)) so the worker
+                # terminates here and does NOT fall through to the trailing
+                # 'state=completed' update at the end of this try block.
+                sys.exit(-1)
+
             if aggregation['range'] == 'auto':
                 statsMin = scp.stats['min_idx']
                 statsMax = scp.stats['max_idx']
