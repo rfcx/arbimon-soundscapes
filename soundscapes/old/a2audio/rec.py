@@ -147,6 +147,25 @@ class Rec:
         return True
 
     def getAudioFromLegacyUri(self, retries=6):
+        # rfcx-local 2026-06-09: route legacy (project_*) recordings through
+        # the S3_ENDPOINT chain via boto3 (same as getAudioFromUri) instead of
+        # hardcoding https://s3.amazonaws.com + urllib, which bypassed the
+        # in-cluster storage chain and hit AWS directly. When S3_ENDPOINT is
+        # set we use boto3; otherwise we fall back to the original AWS-direct
+        # urllib path (preserves upstream/AWS behaviour when unconfigured).
+        if config.get('s3_endpoint'):
+            s3 = boto3.resource('s3',
+                                aws_access_key_id=config['s3_access_key_id'],
+                                aws_secret_access_key=config['s3_secret_access_key'],
+                                endpoint_url=config['s3_endpoint'])
+            b = s3.Bucket(self.bucket)
+            try:
+                b.download_file(self.uri, self.localfilename)
+            except Exception:
+                print(("missing file (legacy via chain). {} {}".format(self.bucket, self.uri)))
+                return False
+            return True
+
         start_time = time.time()
         f = None
         url = 'https://s3.amazonaws.com/' + self.bucket + '/' + self.uri
