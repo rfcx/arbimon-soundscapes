@@ -16,16 +16,13 @@ from .a2audio.rec import Rec
 from .a2pyutils import palette
 from .indices import indices
 from .soundscape import soundscape
-from . import db as dbmod
 from .db import (
     connect,
-    year_expr,  # noqa: F401
     date_format_expr,
     datetime_str_expr,
     LEGACY_EXPR,
     cursor_column_names,
     insert_returning_id,
-    IS_PG,
 )
 
 config = {

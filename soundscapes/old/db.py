@@ -149,20 +149,27 @@ def get_automated_user(conn):
 
 def find_project(conn, url_or_id):
     cursor = conn.cursor()
-    
+
     conditions = [
         'url = %s',
         'external_id = %s',
         'project_id = %s'
     ]
     for condition in conditions:
+        # mysql2pg: project_id is an integer column. MySQL silently coerces a
+        # non-numeric string to 0 (never matches); PG hard-errors on
+        # integer = text. Skip the numeric condition for non-numeric input on
+        # BOTH dialects (behavior-identical: the MySQL coercion also never
+        # matched a real project).
+        if condition.startswith('project_id') and not str(url_or_id).isdigit():
+            continue
         cursor.execute(f'select project_id from projects where {condition}', (url_or_id, ))
         result = cursor.fetchone()
         if result is not None:
             cursor.close()
             (project_id,) = result
             return project_id
-    
+
     cursor.close()
     return None
 
@@ -204,7 +211,12 @@ def create_playlist(conn, project_id, site_id, site_name, year):
     playlist_name = f'{site_name} ({site_id}) {year}'
     cursor = conn.cursor()
 
-    cursor.execute('select count(*) from recordings where site_id = %s and ' + year_expr('datetime') + ' = %s', (site_id, year))
+    # mysql2pg: EXTRACT(YEAR ...) is numeric on PG; a str-typed year param
+    # binds as text -> numeric = text hard-errors (MySQL coerces silently).
+    # Coerce to int on both dialects (identical result; None stays None and
+    # never matches, same as today).
+    year_param = int(year) if year is not None else None
+    cursor.execute('select count(*) from recordings where site_id = %s and ' + year_expr('datetime') + ' = %s', (site_id, year_param))
     (total_recordings,) = cursor.fetchone()
 
     # No recordings
@@ -234,7 +246,7 @@ def create_playlist(conn, project_id, site_id, site_name, year):
 
     # Create playlist_recordings rows
     cursor.execute('''insert into playlist_recordings (playlist_id, recording_id)
-        select %s, recording_id from recordings where site_id = %s and ''' + year_expr('datetime') + ' = %s', (playlist_id, site_id, year))
+        select %s, recording_id from recordings where site_id = %s and ''' + year_expr('datetime') + ' = %s', (playlist_id, site_id, year_param))
     conn.commit()
 
     if cursor.rowcount != total_recordings:
