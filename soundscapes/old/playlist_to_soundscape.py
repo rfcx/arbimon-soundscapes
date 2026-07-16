@@ -16,7 +16,17 @@ from .a2audio.rec import Rec
 from .a2pyutils import palette
 from .indices import indices
 from .soundscape import soundscape
-from .db import connect
+from . import db as dbmod
+from .db import (
+    connect,
+    year_expr,  # noqa: F401
+    date_format_expr,
+    datetime_str_expr,
+    LEGACY_EXPR,
+    cursor_column_names,
+    insert_returning_id,
+    IS_PG,
+)
 
 config = {
     's3_access_key_id': os.getenv('AWS_ACCESS_KEY_ID'),
@@ -31,15 +41,18 @@ currDir = os.path.dirname(os.path.abspath(__file__))
 # aggregation is 'time_of_day' (see soundscape.py for options)
 def get_norm_vector(db, aggregation, playlist_id):
     norm_vector = {}
+    # mysql2pg: DATE_FORMAT(R.datetime, '<token>') -> dialect-appropriate
+    # expression (to_char/EXTRACT on PG). aggregation['date'] holds MySQL
+    # format tokens (e.g. '%H'); date_format_expr maps each per dialect.
     date_parts = [
-        'DATE_FORMAT(R.datetime, "{}")'.format(dp)
+        date_format_expr('R.datetime', dp)
         for dp in aggregation['date']
     ]
     with contextlib.closing(db.cursor()) as cursor:
         cursor.execute('''
             SELECT {} , COUNT(*) as count
-            FROM `playlist_recordings` PR
-            JOIN `recordings` R ON R.recording_id = PR.recording_id
+            FROM playlist_recordings PR
+            JOIN recordings R ON R.recording_id = PR.recording_id
             WHERE PR.playlist_id = {}
             GROUP BY {}
         '''.format(
@@ -50,7 +63,7 @@ def get_norm_vector(db, aggregation, playlist_id):
             int(playlist_id),
             ', '.join(date_parts)
         ))
-        for row in [dict(zip(cursor.column_names, r)) for r in cursor.fetchall()]:
+        for row in [dict(zip(cursor_column_names(cursor), r)) for r in cursor.fetchall()]:
             idx = sum([
                 int(row['dp_{}'.format(i)]) * p
                 for i, p in enumerate(aggregation['projection'])
@@ -121,11 +134,14 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
 
     try:
         #------------------------------- PREPARE --------------------------------------------------------------------------------------------------------------------
-        q = ("SELECT r.`recording_id`,`uri`, DATE_FORMAT( `datetime` , \
-            '%Y-%m-%d %H:%i:%s') as date, IF(LEFT(r.uri, 8) = 'project_', 1, 0) legacy \
-            FROM `playlist_recordings` pr \
-            JOIN `recordings` r ON pr.`recording_id` = r.`recording_id` \
-            WHERE `playlist_id` = " + str(playlist_id))
+        # mysql2pg: DATE_FORMAT(datetime,'%Y-%m-%d %H:%i:%s') ->
+        # datetime_str_expr (to_char on PG, byte-identical text on MySQL);
+        # IF(LEFT(...)) -> LEGACY_EXPR CASE (identical both engines);
+        # backticks stripped (all-lowercase identifiers, portable both ways).
+        q = ("SELECT r.recording_id, uri, " + datetime_str_expr('datetime') + " as date, " + LEGACY_EXPR + " legacy \
+            FROM playlist_recordings pr \
+            JOIN recordings r ON pr.recording_id = r.recording_id \
+            WHERE playlist_id = " + str(playlist_id))
 
         print('main: log: retrieving playlist recordings list')
         totalRecs = 0
@@ -145,18 +161,18 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
             print('main: log: playlist recordings list retrieved', totalRecs)
         try:
             with contextlib.closing(db.cursor()) as cursor:
-                cursor.execute('update `jobs` set state="processing", `progress` = 1,\
-                    `progress_steps` = '+str(int(totalRecs)+5)+' \
-                    where `job_id` = '+str(job_id))
+                cursor.execute("update jobs set state='processing', progress = 1,\
+                    progress_steps = "+str(int(totalRecs)+5)+", last_update = now() \
+                    where job_id = "+str(job_id))
                 db.commit()
         except Exception as e:
             print(str(e))
         if len(recsToProcess) < 1:
             print('main: failed: invalid playlist or no recordings on playlist')
             with contextlib.closing(db.cursor()) as cursor:
-                cursor.execute('update `jobs` set `state`="error", \
-                    `completed` = -1,`remarks` = \'Error: Invalid playlist \
-                    (Maybe empty).\' where `job_id` = '+str(job_id))
+                cursor.execute("update jobs set state='error', \
+                    completed = -1, remarks = 'Error: Invalid playlist \
+                    (Maybe empty).', last_update = now() where job_id = "+str(job_id))
                 db.commit()
             sys.exit(-1)
 
@@ -186,7 +202,7 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
                 start_time_rec = time.time()
                 try:
                     with contextlib.closing(db1.cursor()) as cursor:
-                        cursor.execute('update jobs set state="processing", progress = progress + 10 where job_id = '+str(job_id))
+                        cursor.execute("update jobs set state='processing', progress = progress + 10, last_update = now() where job_id = "+str(job_id))
                         db1.commit()
                 except Exception as e:
                     print(str(e))
@@ -297,21 +313,21 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
             print('main: log: processing recordings results: ' + str(len(resultsParallel)))
             try:
                 with contextlib.closing(db.cursor()) as cursor:
-                    cursor.execute('update `jobs` set `state`="processing", \
-                        `progress` = `progress` + 1 where `job_id` = '+str(job_id))
+                    cursor.execute("update jobs set state='processing', \
+                        progress = progress + 1, last_update = now() where job_id = "+str(job_id))
                     db.commit()
             except Exception as e:
                 print(str(e))
                 try:
-                    print('Attempting to re-establish main MySQL connection')
+                    # mysql2pg: re-dial via the dialect-aware connect() (was a
+                    # hardcoded mysql.connector.connect); preserves the
+                    # reconnect-on-transient-drop behavior on both engines.
+                    print('Attempting to re-establish main database connection')
                     db.close()
-                    db = mysql.connector.connect(
-                        host=config['db_host'], user=config['db_user'],
-                        password=config['db_password'], database=config['db_name']
-                    )
+                    db = connect()
                     with contextlib.closing(db.cursor()) as cursor:
-                        cursor.execute('update `jobs` set `state`="processing", \
-                            `progress` = `progress` + 1 where `job_id` = '+str(job_id))
+                        cursor.execute("update jobs set state='processing', \
+                            progress = progress + 1, last_update = now() where job_id = "+str(job_id))
                         db.commit()
                 except Exception as e:
                     print('ERROR', str(e))
@@ -371,12 +387,17 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
                 # the trigger will override our state='error' back to
                 # 'completed'. (completed=-1 is the authoritative error flag
                 # regardless, but keep state consistent for the frontend.)
+                # mysql2pg: PG has no jobs_BEFORE_UPDATE trigger, so the
+                # progress=0 reset is a harmless no-op there rather than a
+                # trigger-dodge; kept byte-identical (parity-first) plus the
+                # Defect-D last_update bump.
                 with contextlib.closing(db.cursor()) as cursor:
-                    cursor.execute('update `jobs` set `state`="error", '
-                        '`completed` = -1, `progress` = 0, '
-                        '`remarks` = \'Error: no usable '
-                        'recording data (all recordings missing or unreadable).\' '
-                        'where `job_id` = '+str(job_id))
+                    cursor.execute("update jobs set state='error', "
+                        "completed = -1, progress = 0, "
+                        "remarks = 'Error: no usable "
+                        "recording data (all recordings missing or unreadable).', "
+                        "last_update = now() "
+                        "where job_id = "+str(job_id))
                     db.commit()
                 shutil.rmtree(working_folder)
                 db.close()
@@ -392,11 +413,12 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
                 statsMin = aggregation['range'][0]
                 statsMax = aggregation['range'][1]
 
+            # mysql2pg: backticks stripped (all-lowercase, portable both ways).
             query, query_data = ("""
-                INSERT INTO `soundscapes`( `name`, `project_id`, `user_id`,
-                `soundscape_aggregation_type_id`, `bin_size`, `uri`, `min_t`,
-                `max_t`, `min_f`, `max_f`, `min_value`, `max_value`,
-                `date_created`, `playlist_id`, `threshold` , `threshold_type` ,`frequency` ,`normalized`)
+                INSERT INTO soundscapes( name, project_id, user_id,
+                soundscape_aggregation_type_id, bin_size, uri, min_t,
+                max_t, min_f, max_f, min_value, max_value,
+                date_created, playlist_id, threshold , threshold_type ,frequency ,normalized)
                 VALUES (
                     %s, %s, %s, %s, %s, NULL, %s, %s, 0, %s, 0, %s, NOW(), %s,
                     %s, %s, %s, %s
@@ -411,12 +433,12 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
             scpId = -1
             try:
                 with contextlib.closing(db.cursor()) as cursor:
-                    cursor.execute('update `jobs` set `state`="processing", \
-                        `progress` = `progress` + 1 where `job_id` = '+str(job_id))
+                    cursor.execute("update jobs set state='processing', \
+                        progress = progress + 1, last_update = now() where job_id = "+str(job_id))
                     db.commit()
-                    cursor.execute(query, query_data)
+                    # mysql2pg: cursor.lastrowid -> RETURNING soundscape_id on PG.
+                    scpId = insert_returning_id(cursor, query, query_data, 'soundscape_id')
                     db.commit()
-                    scpId = cursor.lastrowid
             except Exception as e:
                 print('WARN', 'progress increment', str(e))
 
@@ -429,8 +451,8 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
             scp.write_image(working_folder + imgout, palette.get_palette())
             try:
                 with contextlib.closing(db.cursor()) as cursor:
-                    cursor.execute('update `jobs` set `state`="processing", \
-                        `progress` = `progress` + 1 where `job_id` = '+str(job_id))
+                    cursor.execute("update jobs set state='processing', \
+                        progress = progress + 1, last_update = now() where job_id = "+str(job_id))
                     db.commit()
             except Exception as e:
                 print(str(e))
@@ -454,15 +476,15 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
                 bucket.upload_file(working_folder+imgout, imageUri, ExtraArgs={'ACL': 'public-read'})
                 try:
                     with contextlib.closing(db.cursor()) as cursor:
-                        cursor.execute('update `jobs` set `state`="processing", \
-                            `progress` = `progress` + 1 where `job_id` = '+str(job_id))
+                        cursor.execute("update jobs set state='processing', \
+                            progress = progress + 1, last_update = now() where job_id = "+str(job_id))
                         db.commit()
                 except Exception as e:
                     print('WARN', 'progress increment', str(e))
                 bucket.upload_file(working_folder+scidxout, indexUri, ExtraArgs={'ACL': 'public-read'})
                 with contextlib.closing(db.cursor()) as cursor:
-                    cursor.execute("update `soundscapes` set `uri` = '"+imageUri+"' \
-                        where  `soundscape_id` = "+str(soundscapeId))
+                    cursor.execute("update soundscapes set uri = '"+imageUri+"' \
+                        where  soundscape_id = "+str(soundscapeId))
                     db.commit()
 
                 bucket.upload_file(peaknFile+'.json', peaknumbersUri, ExtraArgs={'ACL': 'public-read'})
@@ -473,21 +495,26 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
                 with contextlib.closing(db.cursor()) as cursor:
                     cursor.execute('delete from soundscapes where soundscape_id ='+str(scpId))
                     db.commit()
-                    cursor.execute('update `jobs` set `state`="error", \
-                        `completed` = -1,`remarks` = \'Error: Failed writing soundscape files.\' \
-                        where `job_id` = '+str(job_id))
+                    cursor.execute("update jobs set state='error', \
+                        completed = -1, remarks = 'Error: Failed writing soundscape files.', \
+                        last_update = now() where job_id = "+str(job_id))
                     db.commit()
         else:
             print('main: failed: no results from playlist id:'+playlist_id)
+            # mysql2pg NOTE (pre-existing behavior, preserved parity-first):
+            # this error path does NOT sys.exit, so it falls through to the
+            # trailing 'completed' update below, overriding error->completed.
+            # That is today's live MySQL behavior too (no trigger involved);
+            # flagged for the post-migration cleanup list, not silently fixed.
             with contextlib.closing(db.cursor()) as cursor:
-                cursor.execute('update `jobs` set `state`="error", \
-                    `completed` = -1,`remarks` = \'Error: No results found.\' \
-                    where `job_id` = '+str(job_id))
+                cursor.execute("update jobs set state='error', \
+                    completed = -1, remarks = 'Error: No results found.', \
+                    last_update = now() where job_id = "+str(job_id))
                 db.commit()
         try:
             with contextlib.closing(db.cursor()) as cursor:
-                cursor.execute('update `jobs` set `state`="completed", `completed`=1, \
-                    `progress` = `progress` + 1 where `job_id` = '+str(job_id))
+                cursor.execute("update jobs set state='completed', completed=1, \
+                    progress = progress + 1, last_update = now() where job_id = "+str(job_id))
                 db.commit()
         except Exception as e:
             print('WARN', 'progress completion', str(e))
@@ -503,9 +530,9 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
         print(errmsg)
         with contextlib.closing(db.cursor()) as cursor:
             cursor.execute('\
-                UPDATE `jobs` \
-                SET `state`=%s, `completed`=%s, `remarks`=%s \
-                WHERE `job_id` = %s', [
+                UPDATE jobs \
+                SET state=%s, completed=%s, remarks=%s, last_update=now() \
+                WHERE job_id = %s', [
                 'error', -1, errmsg, job_id
             ])
             db.commit()
