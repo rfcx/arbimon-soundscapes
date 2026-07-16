@@ -9,6 +9,9 @@ soundfile==0.12.1
 
 # For batch legacy
 mysql-connector-python==8.1.0
+# mysql2pg Phase 5.5 (W5): postgres driver for the dialect-aware db.py.
+# Inactive unless ARBIMON_DB_DIALECT=postgres (set at the coordinated flip).
+psycopg2-binary==2.9.9
 boto3==1.28.71
 
 # Dev
