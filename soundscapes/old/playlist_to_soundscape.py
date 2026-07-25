@@ -135,7 +135,12 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
         # datetime_str_expr (to_char on PG, byte-identical text on MySQL);
         # IF(LEFT(...)) -> LEGACY_EXPR CASE (identical both engines);
         # backticks stripped (all-lowercase identifiers, portable both ways).
-        q = ("SELECT r.recording_id, uri, " + datetime_str_expr('datetime') + " as date, " + LEGACY_EXPR + " legacy \
+        # rfcx-local 2026-07-25: also project sample_rate/duration/samples so
+        # in-pod concurrency can be DERIVED from signal size (see the adaptive
+        # concurrency block below). These columns already exist on `recordings`
+        # and are portable across both engines.
+        q = ("SELECT r.recording_id, uri, " + datetime_str_expr('datetime') + " as date, " + LEGACY_EXPR + " legacy, \
+            r.sample_rate, r.duration, r.samples \
             FROM playlist_recordings pr \
             JOIN recordings r ON pr.recording_id = r.recording_id \
             WHERE playlist_id = " + str(playlist_id))
@@ -153,7 +158,10 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
                     "uri": row[1],
                     "id": row[0],
                     "date": row[2],
-                    "legacy": row[3]
+                    "legacy": row[3],
+                    "sample_rate": row[4],
+                    "duration": row[5],
+                    "samples": row[6]
                 })
             print('main: log: playlist recordings list retrieved', totalRecs)
         try:
@@ -182,6 +190,69 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
         peaknumbers  = indices.Indices(aggregation)
         hIndex = indices.Indices(aggregation)
         aciIndex = indices.Indices(aggregation)
+
+        # ---- adaptive in-pod concurrency (rfcx-local 2026-07-25) ----
+        # WHY: fpeaks.R/aci.R readWave() the ENTIRE signal, promote it to a
+        # double vector and retain both copies, so worker memory is driven by
+        # SAMPLES PER RECORDING x CONCURRENCY -- not by recording count and not
+        # by bin_size. Measured in the production image (cgroup accounting, the
+        # same counter the OOM killer enforces):
+        #   384kHz/59s (22,656,000 samples): c=1 1.48GB | c=2 2.84GB | c=3 4.22GB
+        #    48kHz/60s ( 2,880,000 samples): c=1 0.08GB | c=3 0.67GB | c=6 1.08GB
+        #   => ~64.9 bytes/sample/process, linear across both classes.
+        # jobs.ncpu (typically 3) was applied UNCONDITIONALLY, so a playlist of
+        # ultrasonic AudioMoth audio (384kHz) exceeded a 3Gi container limit and
+        # was OOMKilled -- deterministically, at any playlist size.
+        #
+        # Rather than raising the memory limit (masks the defect) or blanket
+        # serializing (needlessly slows the ~99% of recordings that are small,
+        # on jobs that already run for hours), derive a concurrency that keeps
+        # the WORST recording in this playlist inside the budget.
+        #
+        # SCIENTIFICALLY INERT: this only changes how many recordings are
+        # processed concurrently. processRec() has no cross-recording state and
+        # the aggregation/reduce is untouched, so results are unchanged.
+        def _worst_samples(recs_list):
+            worst = 0
+            for r in recs_list:
+                s = r.get("samples")
+                if not s:
+                    sr, dur = r.get("sample_rate"), r.get("duration")
+                    try:
+                        s = int(sr) * int(dur) if (sr and dur) else None
+                    except (TypeError, ValueError):
+                        s = None
+                if not s:
+                    return None          # unknown -> caller assumes worst case
+                try:
+                    worst = max(worst, int(s))
+                except (TypeError, ValueError):
+                    return None
+            return worst
+
+        _bytes_per_sample = float(os.getenv('SOUNDSCAPE_BYTES_PER_SAMPLE', '64.9'))
+        _proc_overhead_gb = float(os.getenv('SOUNDSCAPE_PROC_OVERHEAD_GB', '0.06'))
+        _fixed_gb = float(os.getenv('SOUNDSCAPE_FIXED_GB', '0.25'))
+        _safety = float(os.getenv('SOUNDSCAPE_MEM_SAFETY', '0.75'))
+        _limit_gb = float(os.getenv('SOUNDSCAPE_MEM_LIMIT_GB', '3.0'))
+
+        _ws = _worst_samples(recsToProcess)
+        if _ws is None:
+            # Missing size metadata: fail SAFE (a wrong guess here is an OOM).
+            print('main: log: concurrency 1 (recording size unknown -> worst case)')
+            num_cores = 1
+        else:
+            _per_proc = _ws * _bytes_per_sample / (1024.0 ** 3) + _proc_overhead_gb
+            _usable = _limit_gb * _safety - _fixed_gb
+            _safe = max(1, int(_usable // _per_proc)) if _per_proc > 0 else 1
+            if _safe < num_cores:
+                print('main: log: reducing concurrency %d -> %d (worst recording '
+                      '%d samples, ~%.2f GB/process, budget %.2f GB)'
+                      % (num_cores, _safe, _ws, _per_proc, _usable))
+                num_cores = _safe
+            else:
+                print('main: log: concurrency %d retained (worst recording %d '
+                      'samples, ~%.2f GB/process)' % (num_cores, _ws, _per_proc))
 
         print("main: log: start parallel processing")
 
