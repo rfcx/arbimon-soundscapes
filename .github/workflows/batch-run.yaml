@@ -1,4 +1,22 @@
-name: 'Create batch run'
+name: 'Create batch run (AWS — SUPERSEDED)'
+
+# ⚠️ THIS TARGETS THE AWS CLUSTER, NOT PRODUCTION. Reviewed 2026-08-31.
+#
+# It creates a batch Job from an ECR image
+# (887044485231.dkr.ecr.eu-west-1.amazonaws.com/arbimon-soundscapes:latest)
+# in the AWS cluster, on the legacy self-hosted `deployment-runner`.
+#
+# Soundscape processing now runs in the self-hosted rfcx-local cluster, launched
+# per-job by the jobqueue dispatcher from SOUNDSCAPE_IMAGE_TAG. Running this
+# workflow does NOT queue work in production — it queues work in AWS, where
+# nothing user-facing is served.
+#
+# DELIBERATELY LEFT RUNNABLE (it is `workflow_dispatch`-only, so it cannot fire
+# by itself) rather than deleted, because it is a human-operated tool and the
+# AWS estate still exists. The rename + this banner exist so nobody reaches for
+# it expecting a production batch run.
+#
+# To queue soundscape work in PRODUCTION, use the Arbimon job queue, not this.
 on:
   workflow_dispatch:
     inputs:
