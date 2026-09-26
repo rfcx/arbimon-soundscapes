@@ -48,7 +48,23 @@ def test_no_upload_is_world_readable():
 
 
 def test_uri_still_records_the_image_png_path_value():
-    # the row handle other code derives index.scidx from; see module docstring
+    # the row keeps its historical value (apps only test it for NOT NULL)
     s = _src()
-    assert "imageUri = uriBase + '/image.png'" in s
+    assert "imageUri = 'project_'+str(pid)+'/soundscapes/'+str(soundscapeId)+'/image.png'" in s
     assert re.search(r"update soundscapes set uri = '\"\+imageUri\+\"'", s)
+
+def test_objects_go_to_the_soundscape_bucket_with_flat_keys():
+    # 2026-09-25: arbimon-soundscapes/<sid>/<file>, NOT arbimon2/project_<pid>/...
+    s = _src()
+    assert "bucket = s3.Bucket(config['s3_soundscape_bucket_name'])" in s
+    assert "'s3_soundscape_bucket_name': os.getenv('S3_SOUNDSCAPE_BUCKET_NAME') or 'arbimon-soundscapes'" in s
+    assert "keyBase = str(int(soundscapeId))" in s
+    for f in ('index.scidx', 'peaknumbers.json', 'h.json', 'aci.json'):
+        assert "keyBase + '/%s'" % f in s, f
+    assert 'uriBase' not in s
+
+def test_legacy_recordings_still_read_from_the_legacy_bucket():
+    # the SAME env var picks where legacy recordings are downloaded from; it
+    # must not be repointed at the soundscape bucket
+    s = _src()
+    assert "config['s3_legacy_bucket_name'] if rec['legacy'] else config['s3_bucket_name']" in s

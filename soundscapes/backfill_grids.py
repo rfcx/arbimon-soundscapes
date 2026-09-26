@@ -85,6 +85,7 @@ def main():
     ap.add_argument('--sleep', type=float, default=0.2)
     ap.add_argument('--max-lag-bytes', type=int, default=64 * 1024 * 1024)
     ap.add_argument('--bucket', default=os.getenv('S3_LEGACY_BUCKET_NAME', 'arbimon2'))
+    ap.add_argument('--new-bucket', default=os.getenv('S3_SOUNDSCAPE_BUCKET_NAME', 'arbimon-soundscapes'))
     a = ap.parse_args()
 
     s3 = boto3.client('s3', endpoint_url=os.getenv('S3_ENDPOINT'),
@@ -117,10 +118,17 @@ def main():
     for sid, pid, plid, normalized, threshold, ttype, vmax, agg in todo:
         t0 = time.time()
         try:
-            key = 'project_%d/soundscapes/%d/index.scidx' % (pid, sid)
-            try:
-                body = s3.get_object(Bucket=a.bucket, Key=key)['Body'].read()
-            except s3.exceptions.NoSuchKey:
+            # new layout first (arbimon-soundscapes/<sid>/index.scidx), then the
+            # arbimon2 layout -- same order as the app's readers (2026-09-25).
+            body = None
+            for bkt, key in ((a.new_bucket, '%d/index.scidx' % sid),
+                             (a.bucket, 'project_%d/soundscapes/%d/index.scidx' % (pid, sid))):
+                try:
+                    body = s3.get_object(Bucket=bkt, Key=key)['Body'].read()
+                    break
+                except s3.exceptions.NoSuchKey:
+                    continue
+            if body is None:
                 missing += 1
                 log(ev='missing_scidx', sid=sid, key=key)
                 continue
