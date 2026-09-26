@@ -15,6 +15,7 @@ from datetime import datetime
 from .a2audio.rec import Rec
 from .indices import indices
 from .soundscape import soundscape
+from .soundscape import grid as sc_grid
 from .db import (
     connect,
     date_format_expr,
@@ -66,6 +67,47 @@ def get_norm_vector(db, aggregation, playlist_id):
             ])
             norm_vector[idx] = row['count']
     return norm_vector
+
+def build_grid_rows(scidx_path, soundscape_id, settings, norm_vector):
+    """Read the scidx just written and build the soundscape_grids row + the
+    membership rows. Pure (no DB), so it can run before the transaction."""
+    with open(scidx_path, 'rb') as f:
+        parsed = sc_grid.parse_scidx(f.read())
+    grid_bytes, meta = sc_grid.encode_grid(parsed)
+    counts, amps = sc_grid.decode_grid(grid_bytes, meta['width'], meta['height'])
+    nv = {str(k): v for k, v in (norm_vector or {}).items()} or None
+    prev = sc_grid.preview(counts, amps, meta, settings, nv)
+    return dict(
+        soundscape_id=int(soundscape_id), meta=meta, grid=grid_bytes, preview=prev,
+        norm_vector=sc_grid.norm_vector_json(norm_vector),
+        norm_source='playlist-at-creation' if norm_vector else 'none',
+        recordings=sorted(set(int(r) for r in parsed['recordings'])),
+    )
+
+def write_grid_rows(cursor, rows):
+    """Insert (idempotently) the grid row and the membership rows. Caller
+    owns the transaction."""
+    m = rows['meta']
+    cursor.execute(
+        'insert into soundscape_grids (soundscape_id, width, height, offsetx, offsety,'
+        ' max_count, max_amp, grid, encoding, preview, norm_vector, norm_source)'
+        ' values (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)'
+        ' on conflict (soundscape_id) do update set width = excluded.width,'
+        ' height = excluded.height, offsetx = excluded.offsetx, offsety = excluded.offsety,'
+        ' max_count = excluded.max_count, max_amp = excluded.max_amp, grid = excluded.grid,'
+        ' encoding = excluded.encoding, preview = excluded.preview,'
+        ' norm_vector = excluded.norm_vector, norm_source = excluded.norm_source,'
+        ' updated_at = now()',
+        (rows['soundscape_id'], m['width'], m['height'], m['offsetx'], m['offsety'],
+         m['max_count'], m['max_amp'], bytes(rows['grid']), sc_grid.ENCODING,
+         bytes(rows['preview']), rows['norm_vector'], rows['norm_source']))
+    recs = rows['recordings']
+    for i in range(0, len(recs), 5000):
+        chunk = recs[i:i + 5000]
+        cursor.execute(
+            'insert into soundscape_recordings (soundscape_id, recording_id)'
+            ' select %s, unnest(%s::bigint[]) on conflict do nothing',
+            (rows['soundscape_id'], chunk))
 
 def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
     num_cores = multiprocessing.cpu_count()
@@ -557,7 +599,22 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
                 except Exception as e:
                     print('WARN', 'progress increment', str(e))
                 bucket.upload_file(working_folder+scidxout, indexUri)
+                # 2026-09-25: the heat-map grid + the soundscape's recording
+                # membership land in the SAME transaction as the uri UPDATE,
+                # AFTER the scidx upload succeeded. A crash therefore leaves
+                # either (row, no uri, no grid) or all three -- never a grid
+                # for a scidx that does not exist. On the error path below the
+                # row DELETE cascades to both tables (FK ON DELETE CASCADE).
+                # arbimon.soundscape_grids / soundscape_recordings (rfcx-local
+                # data-stores/arbimon-pg/schema/019).
+                grid_rows = build_grid_rows(
+                    working_folder + scidxout, soundscapeId,
+                    dict(visual_max_value=None, normalized=normalized,
+                         threshold=threshold, threshold_type=threshold_type),
+                    scp.norm_vector,
+                )
                 with contextlib.closing(db.cursor()) as cursor:
+                    write_grid_rows(cursor, grid_rows)
                     cursor.execute("update soundscapes set uri = '"+imageUri+"' \
                         where  soundscape_id = "+str(soundscapeId))
                     db.commit()
