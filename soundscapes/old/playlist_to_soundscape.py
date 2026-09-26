@@ -30,6 +30,11 @@ config = {
     's3_secret_access_key': os.getenv('AWS_SECRET_ACCESS_KEY'),
     's3_bucket_name': os.getenv('S3_BUCKET_NAME'),
     's3_legacy_bucket_name': os.getenv('S3_LEGACY_BUCKET_NAME'),
+    # 2026-09-25 (operator goifirr 22:12 #3 / 23:32): soundscape OUTPUT objects
+    # have their own bucket. S3_LEGACY_BUCKET_NAME stays what it is -- it also
+    # selects where LEGACY RECORDINGS are READ from (arbimon2), so it must not
+    # be repointed.
+    's3_soundscape_bucket_name': os.getenv('S3_SOUNDSCAPE_BUCKET_NAME') or 'arbimon-soundscapes',
     's3_endpoint': os.getenv('S3_ENDPOINT')
 }
 
@@ -573,12 +578,17 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
                 print(str(e))
             print("main: timing: writing image:" + str(int(1000 * (time.time()-start_time_all))) + 'ms')
 
-            uriBase = 'project_'+str(pid)+'/soundscapes/'+str(soundscapeId)
-            imageUri = uriBase + '/image.png'
-            indexUri = uriBase + '/index.scidx'
-            peaknumbersUri = uriBase + '/peaknumbers.json'
-            hUri = uriBase + '/h.json'
-            aciUri = uriBase + '/aci.json'
+            # soundscapes.uri keeps its historical VALUE: every one of the
+            # 11,846 rows holds 'project_<pid>/soundscapes/<sid>/image.png' and
+            # the apps only test it for NOT NULL ("finished") -- nothing
+            # dereferences it to a live object any more. Object keys are the
+            # new flat layout in the soundscape bucket: <sid>/<file>.
+            imageUri = 'project_'+str(pid)+'/soundscapes/'+str(soundscapeId)+'/image.png'
+            keyBase = str(int(soundscapeId))
+            indexUri = keyBase + '/index.scidx'
+            peaknumbersUri = keyBase + '/peaknumbers.json'
+            hUri = keyBase + '/h.json'
+            aciUri = keyBase + '/aci.json'
 
             try:
                 print('main: log: trying connection to bucket')
@@ -587,7 +597,7 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
                                     aws_access_key_id=config['s3_access_key_id'], 
                                     aws_secret_access_key=config['s3_secret_access_key'],
                                     endpoint_url=config['s3_endpoint'])
-                bucket = s3.Bucket(config['s3_legacy_bucket_name'])
+                bucket = s3.Bucket(config['s3_soundscape_bucket_name'])
                 # No ACL: these objects are served only through authenticated,
                 # project-scoped routes (arbimon-legacy), never by a public
                 # bucket url. (Were uploaded world-readable until 2026-09-25.)
