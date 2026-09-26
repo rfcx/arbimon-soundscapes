@@ -132,6 +132,58 @@ def test_preview_matches_reference_renderer_all_modes():
         assert got == want, m
 
 
+def _v1_scidx(width, height, recordings, cells):
+    """Hand-build a VERSION 1 scidx (the writer only makes v2): same layout, but a
+    cell is u16 count + rec indices with NO float32 amplitudes (the format that
+    arbimon-legacy scidx.js reads when `version < 2`)."""
+    rcbytes = 1 if len(recordings) < 256 else 2
+    head = struct.pack('>6sHHHHH', b'SCIDX ', 1, 0, width, 0, height)
+    head += struct.pack('>BBB', (len(recordings) >> 16) & 255, (len(recordings) >> 8) & 255, len(recordings) & 255)
+    head += struct.pack('>B', rcbytes)
+    body_start = len(head) + 8
+    recs = b''.join(struct.pack('>Q', r) for r in recordings)
+    rows_ptr_start = body_start + len(recs)
+    rows_blob = b''
+    row_ptrs = []
+    base = rows_ptr_start + 8 * height
+    for y in range(height):
+        row_cells = {x: v for (yy, x), v in cells.items() if yy == y}
+        if not row_cells:
+            row_ptrs.append(0)
+            continue
+        row_off = base + len(rows_blob)
+        row_ptrs.append(row_off)
+        cell_blob = b''
+        cptrs = []
+        cstart = row_off + 8 * width
+        for x in range(width):
+            if x not in row_cells:
+                cptrs.append(0)
+                continue
+            cptrs.append(cstart + len(cell_blob))
+            idxs = row_cells[x]
+            cell_blob += struct.pack('>H', len(idxs)) + b''.join(i.to_bytes(rcbytes, 'big') for i in idxs)
+        rows_blob += b''.join(struct.pack('>Q', c) for c in cptrs) + cell_blob
+    return head + struct.pack('>Q', rows_ptr_start) + recs + b''.join(struct.pack('>Q', r) for r in row_ptrs) + rows_blob
+
+def test_v1_scidx_counts_only_grid():
+    recs = [500 + i for i in range(9)]
+    cells = {(0, 0): [0, 1, 2], (0, 3): [4], (2, 1): [1, 5, 6, 7, 8], (4, 5): [3]}
+    p = G.parse_scidx(_v1_scidx(6, 5, recs, cells))
+    assert p['version'] == 1 and p['recordings'] == recs
+    assert p['cells'][(2, 1)] == ([1, 5, 6, 7, 8], [])
+    grid, meta = G.encode_grid(p)
+    assert meta['encoding'] == G.ENCODING_COUNTS and meta['max_amp'] == 0.0 and meta['max_count'] == 5
+    assert len(gzip.decompress(grid)) == 6 * 5 * 2          # counts only, no body
+    counts, amps = G.decode_grid(grid, 6, 5, meta['encoding'])
+    assert counts[2 * 6 + 1] == 5 and counts[0] == 3 and sum(counts) == 10
+    assert all(len(a) == 0 for a in amps)
+    # a threshold cannot apply to v1 (no amplitudes) -- every renderer falls back to counts
+    m = dict(visual_max_value=None, normalized=0, threshold=0.5, threshold_type='absolute')
+    got = gzip.decompress(G.preview(counts, amps, meta, m, None))
+    want = _render_reference(p, meta, m, None)
+    assert got == want
+
 def test_rejects_non_scidx():
     try:
         G.parse_scidx(b'NOTSCI' + b'\x00' * 40)

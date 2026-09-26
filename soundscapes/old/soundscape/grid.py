@@ -31,7 +31,8 @@ import json
 import struct
 from array import array
 
-ENCODING = 3
+ENCODING = 3          # counts + sorted amplitudes (scidx v2)
+ENCODING_COUNTS = 1   # counts only (scidx v1 stores no amplitudes)
 SCIDX_MAGIC = b'SCIDX '
 
 
@@ -46,7 +47,11 @@ def parse_scidx(buf):
     if buf[:6] != SCIDX_MAGIC:
         raise ValueError('not a SCIDX file')
     version, offsetx, width, offsety, height = struct.unpack_from('>HHHHH', buf, 6)
-    if version != 2:
+    # v1 (early soundscapes) stores NO amplitudes: each cell is count + recording
+    # indices only (arbimon-legacy scidx.js reads amps only `if version >= 2`).
+    # Threshold rendering is impossible for v1 in every renderer, so a count-only
+    # cell (amps = []) reproduces them exactly.
+    if version not in (1, 2):
         raise ValueError('unsupported scidx version %r' % version)
     rcount = (buf[16] << 16) | (buf[17] << 8) | buf[18]
     rcbytes = buf[19]
@@ -72,7 +77,7 @@ def parse_scidx(buf):
                     v = (v << 8) | buf[p + b]
                 recs.append(v)
                 p += rcbytes
-            amps = list(struct.unpack_from('>%df' % count, buf, p))
+            amps = list(struct.unpack_from('>%df' % count, buf, p)) if version >= 2 else []
             cells[(y, x)] = (recs, amps)
     return dict(version=version, offsetx=offsetx, width=width, offsety=offsety,
                 height=height, recordings=recordings, cells=cells)
@@ -90,9 +95,12 @@ def _f32_bits_sorted(amps):
 def encode_grid(parsed):
     """Encode a parsed scidx to (grid_bytes, meta).
 
-    meta = dict(width, height, offsetx, offsety, max_count, max_amp).
+    meta = dict(width, height, offsetx, offsety, max_count, max_amp, encoding).
+    encoding 1 (counts only) is used for v1 scidx files, which carry no
+    amplitudes: the grid body is then just the u16 counts.
     """
     w, h = parsed['width'], parsed['height']
+    counts_only = parsed.get('version', 2) < 2
     cells = parsed['cells']
     counts = array('H', [0]) * (w * h)
     deltas = array('I')
@@ -109,6 +117,10 @@ def encode_grid(parsed):
             counts[y * w + x] = n
             if n > max_count:
                 max_count = n
+            if counts_only:
+                continue
+            if len(amps) != n:
+                raise ValueError('cell (%d,%d): %d amplitudes for %d recordings' % (y, x, len(amps), n))
             bits = _f32_bits_sorted(amps)
             prev = 0
             for v in bits:
@@ -128,17 +140,23 @@ def encode_grid(parsed):
         shuffled[b * n:(b + 1) * n] = raw[b::4]
     grid = gzip.compress(cbytes + bytes(shuffled), compresslevel=6, mtime=0)
     return grid, dict(width=w, height=h, offsetx=parsed['offsetx'], offsety=parsed['offsety'],
-                      max_count=max_count, max_amp=float(array('f', [max_amp])[0]))
+                      max_count=max_count, max_amp=float(array('f', [max_amp])[0]),
+                      encoding=ENCODING_COUNTS if counts_only else ENCODING)
 
 
-def decode_grid(grid, width, height):
-    """Inverse of encode_grid -> (counts[list], amps[list of array('f') sorted])."""
+def decode_grid(grid, width, height, encoding=ENCODING):
+    """Inverse of encode_grid -> (counts[list], amps[list of array('f') sorted]).
+    For encoding 1 every amps entry is empty (no amplitudes exist)."""
     raw = gzip.decompress(grid)
     ncell = width * height
     counts = array('H')
     counts.frombytes(raw[:ncell * 2])
     if not _little():
         counts = _swap(counts)
+    if encoding == ENCODING_COUNTS:
+        if len(raw) != ncell * 2:
+            raise ValueError('encoding 1 grid has a body')
+        return list(counts), [array('f') for _ in range(ncell)]
     body = raw[ncell * 2:]
     n = len(body) // 4
     if n != sum(counts):

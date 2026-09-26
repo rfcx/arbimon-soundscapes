@@ -74,7 +74,7 @@ def build_grid_rows(scidx_path, soundscape_id, settings, norm_vector):
     with open(scidx_path, 'rb') as f:
         parsed = sc_grid.parse_scidx(f.read())
     grid_bytes, meta = sc_grid.encode_grid(parsed)
-    counts, amps = sc_grid.decode_grid(grid_bytes, meta['width'], meta['height'])
+    counts, amps = sc_grid.decode_grid(grid_bytes, meta['width'], meta['height'], meta['encoding'])
     nv = {str(k): v for k, v in (norm_vector or {}).items()} or None
     prev = sc_grid.preview(counts, amps, meta, settings, nv)
     return dict(
@@ -99,7 +99,7 @@ def write_grid_rows(cursor, rows):
         ' norm_vector = excluded.norm_vector, norm_source = excluded.norm_source,'
         ' updated_at = now()',
         (rows['soundscape_id'], m['width'], m['height'], m['offsetx'], m['offsety'],
-         m['max_count'], m['max_amp'], bytes(rows['grid']), sc_grid.ENCODING,
+         m['max_count'], m['max_amp'], bytes(rows['grid']), m['encoding'],
          bytes(rows['preview']), rows['norm_vector'], rows['norm_source']))
     recs = rows['recordings']
     for i in range(0, len(recs), 5000):
