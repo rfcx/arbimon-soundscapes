@@ -13,7 +13,6 @@ import boto3
 from joblib import Parallel, delayed
 from datetime import datetime
 from .a2audio.rec import Rec
-from .a2pyutils import palette
 from .indices import indices
 from .soundscape import soundscape
 from .db import (
@@ -122,7 +121,6 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
         print('main: failed: wrong agregation')
         sys.exit(-1)
 
-    imgout = 'image.png'
     scidxout = 'index.scidx'
 
     if bin_size < 0:
@@ -516,7 +514,14 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
             norm_vector = get_norm_vector(db, aggregation, playlist_id) if normalized else None
             if norm_vector is not None:
                 scp.norm_vector = norm_vector
-            scp.write_image(working_folder + imgout, palette.get_palette())
+            # 2026-09-25 (operator 20:37): the heat-map PNG is no longer
+            # produced. Every consumer renders from `index.scidx` (the SPA
+            # canvas, and arbimon-legacy's on-demand /arbimon2-asset/soundscape
+            # render since #1949); most historical image.png objects were
+            # already retired (09-06). `soundscapes.uri` keeps its
+            # `.../image.png` VALUE: it is the row's storage-path handle, from
+            # which `index.scidx` is derived, and `uri IS NOT NULL` is how the
+            # app lists soundscapes (see arbimon-legacy soundscapes.js).
             try:
                 with contextlib.closing(db.cursor()) as cursor:
                     cursor.execute("update jobs set state='processing', \
@@ -541,7 +546,9 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
                                     aws_secret_access_key=config['s3_secret_access_key'],
                                     endpoint_url=config['s3_endpoint'])
                 bucket = s3.Bucket(config['s3_legacy_bucket_name'])
-                bucket.upload_file(working_folder+imgout, imageUri, ExtraArgs={'ACL': 'public-read'})
+                # No ACL: these objects are served only through authenticated,
+                # project-scoped routes (arbimon-legacy), never by a public
+                # bucket url. (Were uploaded world-readable until 2026-09-25.)
                 try:
                     with contextlib.closing(db.cursor()) as cursor:
                         cursor.execute("update jobs set state='processing', \
@@ -549,15 +556,15 @@ def playlist_to_soundscape(job_id, output_folder = tempfile.gettempdir()):
                         db.commit()
                 except Exception as e:
                     print('WARN', 'progress increment', str(e))
-                bucket.upload_file(working_folder+scidxout, indexUri, ExtraArgs={'ACL': 'public-read'})
+                bucket.upload_file(working_folder+scidxout, indexUri)
                 with contextlib.closing(db.cursor()) as cursor:
                     cursor.execute("update soundscapes set uri = '"+imageUri+"' \
                         where  soundscape_id = "+str(soundscapeId))
                     db.commit()
 
-                bucket.upload_file(peaknFile+'.json', peaknumbersUri, ExtraArgs={'ACL': 'public-read'})
-                bucket.upload_file(hFile+'.json', hUri, ExtraArgs={'ACL': 'public-read'})
-                bucket.upload_file(aciFile+'.json', aciUri, ExtraArgs={'ACL': 'public-read'})
+                bucket.upload_file(peaknFile+'.json', peaknumbersUri)
+                bucket.upload_file(hFile+'.json', hUri)
+                bucket.upload_file(aciFile+'.json', aciUri)
             except Exception as e:
                 print('ERROR', str(e))
                 with contextlib.closing(db.cursor()) as cursor:
