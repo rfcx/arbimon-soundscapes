@@ -234,6 +234,27 @@ class Rec:
 
         try:
             s, fs = sf.read(self.localfilename)
+            # MULTI-CHANNEL -> MONO (2026-09-29, rfcx-local operator GO 08:45).
+            # The soundscape indices are computed by R (fpeaks.R / h.R / aci.R)
+            # on THIS local file. tuneR's readWave() takes only the LEFT channel
+            # of a stereo file, so a stereo recording's soundscape silently
+            # ignored its right channel (measured in this image: a 2 kHz-left /
+            # 5 kHz-right file scored exactly like a left-only file; the right
+            # tone was invisible). 2.37 M of 184.8 M source files are 2-channel.
+            # Downmix here (mean across channels, the PM/AED/RFM rule) and
+            # rewrite the file IN ITS OWN container + sample format so R sees the
+            # true mono mix (opus / flac arrive here already converted to WAV).
+            if getattr(s, 'ndim', 1) > 1:
+                s = np.mean(s, axis=1)
+                try:
+                    subtype = sf.info(self.localfilename).subtype
+                except Exception:
+                    subtype = 'PCM_16'
+                try:
+                    fmt = sf.info(self.localfilename).format
+                except Exception:
+                    fmt = 'WAV'
+                sf.write(self.localfilename, s, fs, subtype=subtype, format=fmt)
             if self.logs:
                 print(
                     "sampling rate = {} Hz, length = {} samples"
